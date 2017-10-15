@@ -1,6 +1,6 @@
 function [vecx, vec]= serialRead()
 close all
-s = serial('COM6','BaudRate',9600);
+s = serial('COM19','BaudRate',9600);
 %get(s,{'Type','Name','Port',})
 counter=0;
 
