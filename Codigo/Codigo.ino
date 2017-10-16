@@ -19,13 +19,14 @@ float luxs = 0;
 float vetor[256];
 
 //referencia de luxs que se quer
-int ilum_min = 3;
+int ilum_min = 30, medias = 0;
 
 //ultimos 5 valores de luxs
 float last_luxs[tamluxs];
 
 //novas variaveis de controlo
-float K1, K2, Kp, Ki, b, y, e , p,u, y_ant = 0, i_ant = 0, e_ant = 0, T;
+float K1, K2, Kp = 1.5, Ki = 3, b = 0.5, y, e , p, u, y_ant = 0, i_ant = 0, e_ant = 0, T,time_stamp = 0;
+//b entre 0 e 1
 
 
 //função que calcula a média dos luxs
@@ -39,7 +40,7 @@ float average()
   {
     somatodos = last_luxs[i] + somatodos;
   }
-  
+
   //divide pelo numero de valores
   media = somatodos / tamluxs;
 
@@ -83,13 +84,13 @@ void calibration()
     vetor[i] = calc_luxs(analogRead(analogPin));;
 
     //prints para ver o que esta a acontecer
-    Serial.print(vetor[i]);
-    Serial.print(' ');
-    Serial.println(i);
+    //Serial.print(vetor[i]);
+    //Serial.print(' ');
+    //Serial.println(i);
 
   }
 
-  Serial.print("Calibration Complete");
+  //Serial.print("Calibration Complete");
 }
 
 //faz shif left dos last_lux e adicion o ultimo valor (TROCAR ISTO POR FUNCAO QUE MIRAGAIA QUERIA)
@@ -101,76 +102,136 @@ void shift_left(float current_luxs)
   }
   last_luxs[tamluxs - 1] = current_luxs;
 }
-
+int search(float u)
+{
+  float dif = 0;
+  int i = 1;
+  for (i = 1; i < 256; i++)
+  {
+    dif = vetor[i] - u;
+    if (dif > 0)
+    {
+      //break;
+      return i - 1;
+    }
+  }
+  return i - 5;
+}
 //funcao onde e controlado a luminosidade do led atraves de outras cenas
 void controlo()
 {
   float integ;      //termo integrador
 
-  
+
 
   //le pino e obtem luxs
-  y = calc_luxs( analogRead(analogPin));
+  luxs = calc_luxs( analogRead(analogPin));
+  shift_left(luxs);
+  y = average();
+
+
 
   //calcula erro em relacao a referencia ilum_min
   e = ilum_min - y;
 
   //obtem parte proporcional
-  p = K1*ilum_min-Kp*y;
+  p = K1 * ilum_min - Kp * y;
 
   //obtem parte integral
-  integ = i_ant + K2*(e + e_ant);
+  integ = i_ant + K2 * (e + e_ant);
 
   //descobre valor led
   u = p + integ;
 
   //faz analog write de tal valor
-  analogWrite(led, u);
+  analogWrite(led, search(u) + 2);
+
 
   //faz set das variaveis para o proximo loop
   y_ant = y;
   i_ant = integ;
   e_ant = e;
-    
+
+
+  
+  Serial.println(average());
+    Serial.print(" ");
+    Serial.print(time_stamp);
+
+/*
+  Serial.print("write value in lux :");
+  Serial.println(u);
+
+  Serial.print("write value :");
+  Serial.println(search(u));
+*/
 }
 
 
 void setup() {
 
+  int i = 0, val = 0;
   //inicializa tamluxs a -1
-  for (int i = 0; i < tamluxs; i++)
+  for (i = 0; i < tamluxs; i++)
   {
     last_luxs[i] = -1;
   }
 
   //calcula constantes com base nos parametros
-  K1 = Kp*b;
-  K2 = Kp*Ki*T/2;
+  T = 0.2;
+  K1 = Kp * b;
+  K2 = Kp * Ki * T / 2;
 
-  //comecao serial comunication  
+  //comecao serial comunication
   Serial.begin(9600);
 
   //calibra sistema
   calibration();
+  analogWrite(led, 0);
+  for (i = 0; i < tamluxs + 3; i++)
+  {
+    delay (50);
+    val = analogRead(analogPin);
+
+    luxs = calc_luxs(val);
+
+    shift_left(luxs);
+    //Serial.println(average());
+
+
+  }
 }
 
 
 // the loop function runs over and over again forever
 void loop() {
+  /*
+    //set the led to something
+    analogWrite(led, 228);   // turn the LED on (HIGH is the voltage level)
 
-  //set the led to something
-  analogWrite(led, 228);   // turn the LED on (HIGH is the voltage level)
+    delay(25);
 
-  delay(25);
+    //le valor do led e calcula luxs
+    luxs = calc_luxs(analogRead(analogPin));
 
-  //le valor do led e calcula luxs
-  luxs = calc_luxs(analogRead(analogPin));
+    //faz shift left dos luxs
+    shift_left(luxs);
 
-  //faz shift left dos luxs
-  shift_left(luxs);
-  
-  //faz print da average
-  Serial.println(average());
+    //faz print da average
+    Serial.println(average());
+  */
+
+
+  medias++;
+  delay(40);
+
+  if (medias == 10)
+  {
+    controlo();
+    time_stamp+=0.04;
+    medias = 0;
+  }
+
 
 
 }
