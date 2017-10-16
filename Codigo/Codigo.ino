@@ -2,31 +2,30 @@
 #define tamluxs 5
 
 //pin onde se localiza o led (MUDAR PARA DEFINE)
-int led = 9;
+#define led 9
 
 //pin onde se localiza o LDR (MUDAR PARA DEFINE)
-int analogPin = 1;
-int val = 0;
+#define analogPin 1
 
 
-int brightness = 0;
-float tensao = 0.0;
 
 
 //Resistencia que nao e' o LDR (MUDAR PARA DEFINE)
 float r1 = 10000.0;
-int contador = 0;
-int primeiro = 0;
-int contador2 = 0;
+
+//usada para obter quantos luxs esta o ldr a detetar atualmente
 float luxs = 0;
-int i = 0;
+
 float vetor[256];
 
+//referencia de luxs que se quer
 int ilum_min = 3;
+
+//ultimos 5 valores de luxs
 float last_luxs[tamluxs];
 
 //novas variaveis de controlo
-float K1, K2, Kp, Ki, b, y, e , k, p,u, y_ant = 0, i_ant = 0, e_ant = 0, T;
+float K1, K2, Kp, Ki, b, y, e , p,u, y_ant = 0, i_ant = 0, e_ant = 0, T;
 
 
 //função que calcula a média dos luxs
@@ -53,7 +52,8 @@ float average()
 float calc_luxs(int val)
 {
   float R2;
-  
+  float luxs;
+  float tensao;
   //regra de 3 simples para converter de 0-1023 para 0-5V
   tensao = (5 * val) / 1023.0;
 
@@ -72,23 +72,20 @@ float calc_luxs(int val)
 void calibration()
 {
   //itera por todos os valores possiveis para o led
-  for (i = 0; i < 256; i++)
+  for (int i = 0; i < 256; i++)
   {
     delay(50);
 
     //poe i como pwm do led corresponde à brightnedd
     analogWrite(led, i);
 
-    //calcula lux atraves do valor lido no pino
-    luxs = calc_luxs(analogRead(analogPin));
-
-    //define valor na lookuptable
-    vetor[i] = luxs;
+    //define valor na lookuptable e calcula lux atraves do valor lido no pino
+    vetor[i] = calc_luxs(analogRead(analogPin));;
 
     //prints para ver o que esta a acontecer
-    Serial.print(luxs);
+    Serial.print(vetor[i]);
     Serial.print(' ');
-    Serial.println(brightness);
+    Serial.println(i);
 
   }
 
@@ -110,11 +107,10 @@ void controlo()
 {
   float integ;      //termo integrador
 
-  //le pino
-  val = analogRead(analogPin);
+  
 
-  //obtem luxs
-  y = calc_luxs(val);
+  //le pino e obtem luxs
+  y = calc_luxs( analogRead(analogPin));
 
   //calcula erro em relacao a referencia ilum_min
   e = ilum_min - y;
@@ -133,7 +129,7 @@ void controlo()
 
   //faz set das variaveis para o proximo loop
   y_ant = y;
-  i_ant = k;
+  i_ant = integ;
   e_ant = e;
     
 }
@@ -167,11 +163,8 @@ void loop() {
 
   delay(25);
 
-  //le valor do led
-  val = analogRead(analogPin);
-
-  //calcula luxs
-  luxs = calc_luxs(val);
+  //le valor do led e calcula luxs
+  luxs = calc_luxs(analogRead(analogPin));
 
   //faz shift left dos luxs
   shift_left(luxs);
