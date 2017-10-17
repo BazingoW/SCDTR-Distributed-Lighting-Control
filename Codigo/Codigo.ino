@@ -8,6 +8,7 @@
 #define analogPin 1
 
 
+//prints provisoriamente em comentario para testar função de matlab
 
 
 //Resistencia que nao e' o LDR (MUDAR PARA DEFINE)
@@ -25,8 +26,11 @@ int ilum_min = 30, medias = 0;
 float last_luxs[tamluxs];
 
 //novas variaveis de controlo
-float K1, K2, Kp = 1.5, Ki = 3, b = 0.5, y, e , p, u, y_ant = 0, i_ant = 0, e_ant = 0, T,time_stamp = 0;
+float K1, K2, Kp = 1.5, Ki = 3, b = 0.5, y, e , p, u, y_ant = 0, i_ant = 0, e_ant = 0, T;
 //b entre 0 e 1
+
+//variável que indica o tempo que decoreu desde o programa de controlo começou a correr
+float time_stamp = 0;
 
 
 //função que calcula a média dos luxs
@@ -38,7 +42,7 @@ float average()
   //soma todos os valores
   for (i = 0; i < tamluxs; i++)
   {
-    somatodos = last_luxs[i] + somatodos;
+    somatodos += last_luxs[i];
   }
 
   //divide pelo numero de valores
@@ -75,6 +79,7 @@ void calibration()
   //itera por todos os valores possiveis para o led
   for (int i = 0; i < 256; i++)
   {
+
     delay(50);
 
     //poe i como pwm do led corresponde à brightnedd
@@ -102,6 +107,10 @@ void shift_left(float current_luxs)
   }
   last_luxs[tamluxs - 1] = current_luxs;
 }
+
+
+//função que utiliza a lookuptable creada para encontrar o valor pwm a aplicar ao LED para chegar ao valor
+// obtido através da função de controlo
 int search(float u)
 {
   float dif = 0;
@@ -117,6 +126,8 @@ int search(float u)
   }
   return i - 5;
 }
+
+
 //funcao onde e controlado a luminosidade do led atraves de outras cenas
 void controlo()
 {
@@ -124,7 +135,7 @@ void controlo()
 
 
 
-  //le pino e obtem luxs
+  //lê pino e obtem luxs
   luxs = calc_luxs( analogRead(analogPin));
   shift_left(luxs);
   y = average();
@@ -153,18 +164,19 @@ void controlo()
   e_ant = e;
 
 
-  
+  //prints para fazer o grafico no matlab
+
   Serial.println(average());
-    Serial.print(" ");
-    Serial.print(time_stamp);
+  Serial.print(" ");
+  Serial.print(time_stamp);
 
-/*
-  Serial.print("write value in lux :");
-  Serial.println(u);
+  /*
+    Serial.print("write value in lux :");
+    Serial.println(u);
 
-  Serial.print("write value :");
-  Serial.println(search(u));
-*/
+    Serial.print("write value :");
+    Serial.println(search(u));
+  */
 }
 
 
@@ -177,17 +189,22 @@ void setup() {
     last_luxs[i] = -1;
   }
 
-  //calcula constantes com base nos parametros
+
   T = 0.2;
+  //calcula constantes com base nos parametros
   K1 = Kp * b;
   K2 = Kp * Ki * T / 2;
 
   //comecao serial comunication
   Serial.begin(9600);
 
-  //calibra sistema
+  //calibra sistema, cria a lookuptable
   calibration();
+
+  //desliga o LED "a sala está vazia logo, luzes desligadas"
   analogWrite(led, 0);
+
+  //normaliza o vector que contem os ultimos valores lidos para não ocorrer erros nas médias, (falta confirmar se o valor da media chega a ~0 nofim)
   for (i = 0; i < tamluxs + 3; i++)
   {
     delay (50);
@@ -221,17 +238,25 @@ void loop() {
     Serial.println(average());
   */
 
+  //valor de delay possivelmente demasiado baixo o grafico obtido tem 10* de delay(se retirado o if)
 
-  medias++;
+  medias ++;
+  
   delay(40);
-
   if (medias == 10)
   {
     controlo();
-    time_stamp+=0.04;
-    medias = 0;
+    time_stamp += 0.04;
+    medias = 0
   }
 
+// esta secção serve para as medidas serem mais precisas(não sei qual o impacto no sistema real)
+
+  //le valor do led e calcula luxs
+    luxs = calc_luxs(analogRead(analogPin));
+
+    //faz shift left dos luxs
+    shift_left(luxs);
 
 
 }
