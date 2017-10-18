@@ -1,3 +1,12 @@
+// código para SCDTR  
+// versão parecida à que deu origem ao grafico
+
+// Diogo Gois; Joao Ramiro; Jose Miragaia
+
+
+
+
+
 //com quantos valores se vai fazer a media
 #define tamluxs 5
 
@@ -20,7 +29,13 @@ float luxs = 0;
 float vetor[256];
 
 //referencia de luxs que se quer
-int ilum_min = 30, medias = 0;
+int ilum_min = 30;
+
+//solução temporária para a utilização de delays
+int medias = 0;
+
+//valor de treshold, a partir do qual o termo integradoe não deverá passar
+int adequateValue= 420;
 
 //ultimos 5 valores de luxs
 float last_luxs[tamluxs];
@@ -151,6 +166,15 @@ void controlo()
   //obtem parte integral
   integ = i_ant + K2 * (e + e_ant);
 
+  // verificar se o valor calculado, composto pelo parte integral não se econtra demasiado, sabendo que o sistema não consegue com corrigir o erro,
+  //logo este termo iria crescer indefinidamente) 
+  // anti-windup
+  if (abs(integ)> adequateValue)
+  {
+    integ = i_ant;
+  }
+  
+  
   //descobre valor led
   u = p + integ;
 
@@ -247,7 +271,7 @@ void loop() {
   {
     controlo();
     time_stamp += 0.04;
-    medias = 0
+    medias = 0;
   }
 
 // esta secção serve para as medidas serem mais precisas(não sei qual o impacto no sistema real)
