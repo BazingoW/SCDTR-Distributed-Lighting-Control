@@ -169,6 +169,7 @@ void controlo()
   // verificar se o valor calculado, composto pelo parte integral não se econtra demasiado, sabendo que o sistema não consegue com corrigir o erro,
   //logo este termo iria crescer indefinidamente) 
   // anti-windup
+  
   if (abs(integ)> adequateValue)
   {
     integ = i_ant;
@@ -190,9 +191,9 @@ void controlo()
 
   //prints para fazer o grafico no matlab
 
-  Serial.println(average());
+  Serial.print(average());
   Serial.print(" ");
-  Serial.print(time_stamp);
+  Serial.println(time_stamp);
 
   /*
     Serial.print("write value in lux :");
@@ -275,12 +276,12 @@ void loop() {
   }
 
 // esta secção serve para as medidas serem mais precisas(não sei qual o impacto no sistema real)
-
+/*
   //le valor do led e calcula luxs
     luxs = calc_luxs(analogRead(analogPin));
 
     //faz shift left dos luxs
     shift_left(luxs);
-
+*/
 
 }
