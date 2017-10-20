@@ -8,7 +8,7 @@
 
 
 //com quantos valores se vai fazer a media
-#define tamluxs 5
+#define tamluxs 15
 
 //pin onde se localiza o led (MUDAR PARA DEFINE)
 #define led 9
@@ -17,8 +17,10 @@
 #define analogPin 1
 
 
+//variaveis de HIGH E LOW
+float minluxs = 20, maxluxs = 55;
 //prints provisoriamente em comentario para testar função de matlab
-
+unsigned long sampInterval = 10000; //10 milisecs
 
 //Resistencia que nao e' o LDR (MUDAR PARA DEFINE)
 float r1 = 10000.0;
@@ -41,7 +43,7 @@ int adequateValue= 420;
 float last_luxs[tamluxs];
 
 //novas variaveis de controlo
-float K1, K2, Kp = 1.5, Ki = 3, b = 0.5, y, e , p, u, y_ant = 0, i_ant = 0, e_ant = 0, T;
+float K1, K2, Kp = 0.1, Ki = 38, b = 0.5, y, e , p, u, y_ant = 0, i_ant = 0, e_ant = 0, T;
 //b entre 0 e 1
 
 //variável que indica o tempo que decoreu desde o programa de controlo começou a correr
@@ -95,7 +97,7 @@ void calibration()
   for (int i = 0; i < 256; i++)
   {
 
-    delay(50);
+    delay(25);
 
     //poe i como pwm do led corresponde à brightnedd
     analogWrite(led, i);
@@ -104,10 +106,9 @@ void calibration()
     vetor[i] = calc_luxs(analogRead(analogPin));;
 
     //prints para ver o que esta a acontecer
-    //Serial.print(vetor[i]);
-    //Serial.print(' ');
-    //Serial.println(i);
-
+    Serial.print(vetor[i]);
+    Serial.print(' ');
+    Serial.println(i);
   }
 
   //Serial.print("Calibration Complete");
@@ -190,10 +191,11 @@ void controlo()
 
 
   //prints para fazer o grafico no matlab
-
-  Serial.print(average());
-  Serial.print(" ");
-  Serial.println(time_stamp);
+Serial.print(micros());
+  
+  Serial.print(" ; ");
+  Serial.println(average());
+  
 
   /*
     Serial.print("write value in lux :");
@@ -215,16 +217,18 @@ void setup() {
   }
 
 
-  T = 0.2;
+ 
   //calcula constantes com base nos parametros
   K1 = Kp * b;
-  K2 = Kp * Ki * T / 2;
+  K2 = Kp * Ki * sampInterval / 2000000;
 
   //comecao serial comunication
-  Serial.begin(9600);
+  Serial.begin(250000);
 
   //calibra sistema, cria a lookuptable
   calibration();
+  minluxs = vetor[85];
+  maxluxs = vetor[170];
 
   //desliga o LED "a sala está vazia logo, luzes desligadas"
   analogWrite(led, 0);
@@ -242,11 +246,22 @@ void setup() {
 
 
   }
+
+  /*analogWrite(led, 255);
+  
+   Serial.print(micros());
+  Serial.print(" ; ");
+   Serial.println(calc_luxs( analogRead(analogPin)));*/
+
+ 
 }
 
 
 // the loop function runs over and over again forever
 void loop() {
+
+  unsigned long startTime = micros();
+  
   /*
     //set the led to something
     analogWrite(led, 228);   // turn the LED on (HIGH is the voltage level)
@@ -263,17 +278,19 @@ void loop() {
     Serial.println(average());
   */
 
+     /*Serial.print(micros());
+  Serial.print(" ; ");
+   Serial.println(calc_luxs( analogRead(analogPin)));*/
+
   //valor de delay possivelmente demasiado baixo o grafico obtido tem 10* de delay(se retirado o if)
 
-  medias ++;
+
+  controlo();
+ unsigned long endTime = micros();
+  delayMicroseconds(sampInterval - (endTime - startTime));
+
   
-  delay(40);
-  if (medias == 10)
-  {
-    controlo();
-    time_stamp += 0.04;
-    medias = 0;
-  }
+  
 
 // esta secção serve para as medidas serem mais precisas(não sei qual o impacto no sistema real)
 /*
