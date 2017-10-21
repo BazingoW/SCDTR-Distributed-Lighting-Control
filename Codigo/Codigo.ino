@@ -37,7 +37,10 @@ int ilum_min = 30;
 int medias = 0;
 
 //valor de treshold, a partir do qual o termo integradoe não deverá passar
-int adequateValue= 420;
+int adequateValue= 100;//valor maximo de lux tolerável antes de começar a alterar deve-se alterarad para dois limites diferentes (min e max)
+
+
+int lastMeasure = 0;
 
 //ultimos 5 valores de luxs
 float last_luxs[tamluxs];
@@ -117,11 +120,16 @@ void calibration()
 //faz shif left dos last_lux e adicion o ultimo valor (TROCAR ISTO POR FUNCAO QUE MIRAGAIA QUERIA)
 void shift_left(float current_luxs)
 {
+  /*
   for (int i = 1; i < tamluxs; i++)
   {
     last_luxs[i - 1] = last_luxs[i];
   }
   last_luxs[tamluxs - 1] = current_luxs;
+  */
+  last_luxs[lastMeasure%tamluxs] = current_luxs;
+  lastMeasure++;
+  
 }
 
 
@@ -170,7 +178,7 @@ void controlo()
   // verificar se o valor calculado, composto pelo parte integral não se econtra demasiado, sabendo que o sistema não consegue com corrigir o erro,
   //logo este termo iria crescer indefinidamente) 
   // anti-windup
-  
+  // slide 25 cap 8
   if (abs(integ)> adequateValue)
   {
     integ = i_ant;
