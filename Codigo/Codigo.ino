@@ -4,7 +4,11 @@
 // Diogo Gois; Joao Ramiro; Jose Miragaia
 
 
-
+ // estados possiveis de ocupação da secretária
+#define  OCUPADO 1
+#define LIVRE 0 
+#define FREESTYLE -1
+#define FEEDFOWARD -2
 
 
 //com quantos valores se vai fazer a media
@@ -19,6 +23,20 @@
 
 //variaveis de HIGH E LOW
 float minluxs = 20, maxluxs = 55;
+
+//variáveis que contem os valores de lux inseridos pelo utilizador
+float luxPedido = 0, luxFeedFoward =0;
+
+
+//variável que entra na função de controlo 
+float ref = 20;
+
+String input;
+char inData[20] = "";
+
+int index=0;
+char inChar;
+
 //prints provisoriamente em comentario para testar função de matlab
 unsigned long sampInterval = 10000; //10 milisecs
 
@@ -27,7 +45,6 @@ float r1 = 10000.0;
 
 //usada para obter quantos luxs esta o ldr a detetar atualmente
 float luxs = 0;
-
 float vetor[256];
 
 //referencia de luxs que se quer
@@ -40,7 +57,7 @@ int medias = 0;
 int adequateValue= 100;//valor maximo de lux tolerável antes de começar a alterar deve-se alterarad para dois limites diferentes (min e max)
 
 
-int lastMeasure = 0;
+long  int lastMeasure = 0;
 
 //ultimos 5 valores de luxs
 float last_luxs[tamluxs];
@@ -51,6 +68,9 @@ float K1, K2, Kp = 0.1, Ki = 38, b = 0.5, y, e , p, u, y_ant = 0, i_ant = 0, e_a
 
 //variável que indica o tempo que decoreu desde o programa de controlo começou a correr
 float time_stamp = 0;
+
+
+int estado = LIVRE;
 
 
 //função que calcula a média dos luxs
@@ -153,7 +173,7 @@ int search(float u)
 
 
 //funcao onde e controlado a luminosidade do led atraves de outras cenas
-void controlo()
+void controlo(float reference)
 {
   float integ;      //termo integrador
 
@@ -167,10 +187,10 @@ void controlo()
 
 
   //calcula erro em relacao a referencia ilum_min
-  e = ilum_min - y;
+  e = reference - y;
 
   //obtem parte proporcional
-  p = K1 * ilum_min - Kp * y;
+  p = K1 * reference - Kp * y;
 
   //obtem parte integral
   integ = i_ant + K2 * (e + e_ant);
@@ -239,7 +259,7 @@ void setup() {
   maxluxs = vetor[170];
 
   //desliga o LED "a sala está vazia logo, luzes desligadas"
-  analogWrite(led, 0);
+  analogWrite(led, 85);
 
   //normaliza o vector que contem os ultimos valores lidos para não ocorrer erros nas médias, (falta confirmar se o valor da media chega a ~0 nofim)
   for (i = 0; i < tamluxs + 3; i++)
@@ -267,7 +287,7 @@ void setup() {
 
 // the loop function runs over and over again forever
 void loop() {
-
+  
   unsigned long startTime = micros();
   
   /*
@@ -293,7 +313,82 @@ void loop() {
   //valor de delay possivelmente demasiado baixo o grafico obtido tem 10* de delay(se retirado o if)
 
 
-  controlo();
+//escolher qual a referencia a seguir provisóriamente em comentário pois os valores de referencia vão ser
+// actualizados quando é dada o novo comando pela janela
+switch (estado)
+{
+  case OCUPADO:
+    ref = maxluxs;
+  case LIVRE:
+    ref = minluxs;
+    case FREESTYLE:
+    ref = luxPedido;
+    case FEEDFOWARD:
+    ref = luxFeedFoward;  
+}
+  
+if (estado != FEEDFOWARD)
+{
+  controlo(ref);
+}
+
+index = 0;
+
+if (Serial.available() > 0)
+{
+while(Serial.available() > 0)
+{
+  
+ if(index < 19) // One less than the size of the array
+      {
+          inChar = Serial.read(); // Read a character
+          inData[index] = inChar; // Store it
+          index++; // Increment where to write next
+          inData[index] = '\0'; // Null terminate the string
+      }
+
+}
+input = String(inData);
+if (input.substring(0,2) == "ocu")
+  {
+    if (input[4] == '0')
+    {
+      estado = LIVRE;
+      ref = minluxs;
+    }
+    else if (input[4] == '1')
+    {
+      estado = OCUPADO;
+      ref = maxluxs;
+    }
+    else
+      Serial.println("Please revise the intruction to send commands");
+  }
+else if (input.substring(0,2) == "mnl")
+  {
+    minluxs = input.substring(4,19).toFloat();
+  }
+else if (input.substring(0,2) == "mxl")
+  {
+    maxluxs = input.substring(4,19).toFloat();
+  }
+  else if (input.substring(0,2) == "lux")
+  {
+    ref = input.substring(4,19).toFloat();
+    luxPedido = ref;
+    estado = FREESTYLE;
+  }
+  else if (input.substring(0,2) == "ffd")
+  {
+    ref = input.substring(4,19).toFloat();
+    luxFeedFoward = ref;
+    estado = FEEDFOWARD;
+  }
+  else 
+  Serial.println("Please revise the intruction to send commands");
+}
+
+ 
  unsigned long endTime = micros();
   delayMicroseconds(sampInterval - (endTime - startTime));
 
