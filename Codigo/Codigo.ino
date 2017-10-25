@@ -1,12 +1,12 @@
-// código para SCDTR  
+// código para SCDTR
 // versão parecida à que deu origem ao grafico
 
 // Diogo Gois; Joao Ramiro; Jose Miragaia
 
 
- // estados possiveis de ocupação da secretária
+// estados possiveis de ocupação da secretária
 #define  OCUPADO 1
-#define LIVRE 0 
+#define LIVRE 0
 #define FREESTYLE -1
 #define FEEDFOWARD -2
 
@@ -24,17 +24,18 @@
 //variaveis de HIGH E LOW
 float minluxs = 20, maxluxs = 55;
 
- float integ = 0;      //termo integrador
+float integ = 0;      //termo integrador
+float desejado = 0;
 
-bool FFD = false;
+bool FFD = true;
 
-//variável que entra na função de controlo 
+//variável que entra na função de controlo
 float ref = minluxs;
 
 String input;
 char inData[20] = "";
 
-int index=0;
+int index = 0;
 char inChar;
 
 //prints provisoriamente em comentario para testar função de matlab
@@ -54,7 +55,7 @@ int ilum_min = 30;
 int medias = 0;
 
 //valor de treshold, a partir do qual o termo integradoe não deverá passar
-int adequateValue= 100;//valor maximo de lux tolerável antes de começar a alterar deve-se alterarad para dois limites diferentes (min e max)
+int adequateValue = 100; //valor maximo de lux tolerável antes de começar a alterar deve-se alterarad para dois limites diferentes (min e max)
 
 
 long  int lastMeasure = 0;
@@ -141,15 +142,15 @@ void calibration()
 void shift_left(float current_luxs)
 {
   /*
-  for (int i = 1; i < tamluxs; i++)
-  {
+    for (int i = 1; i < tamluxs; i++)
+    {
     last_luxs[i - 1] = last_luxs[i];
-  }
-  last_luxs[tamluxs - 1] = current_luxs;
+    }
+    last_luxs[tamluxs - 1] = current_luxs;
   */
-  last_luxs[lastMeasure%tamluxs] = current_luxs;
+  last_luxs[lastMeasure % tamluxs] = current_luxs;
   lastMeasure++;
-  
+
 }
 
 
@@ -175,7 +176,7 @@ int search(float u)
 //funcao onde e controlado a luminosidade do led atraves de outras cenas
 void controlo(float reference)
 {
- 
+
 
 
 
@@ -196,26 +197,26 @@ void controlo(float reference)
   integ = i_ant + K2 * (e + e_ant);
 
   // verificar se o valor calculado, composto pelo parte integral não se econtra demasiado, sabendo que o sistema não consegue com corrigir o erro,
-  //logo este termo iria crescer indefinidamente) 
+  //logo este termo iria crescer indefinidamente)
   // anti-windup
   // slide 25 cap 8
-  if (abs(integ)> adequateValue)
+  if (abs(integ) > adequateValue)
   {
     integ = i_ant;
   }
-  
-  
+
+
   //descobre valor led
   u = p + integ;
 
 
   //faz analog write de tal valor
 
-    
-     if (FFD == true)
-    analogWrite(led, search(u) + search(reference));
-    else 
-    analogWrite(led,search(u));
+
+  if (FFD == true)
+    analogWrite(led, search(u) + search(reference)+4);
+  else
+    analogWrite(led, search(u));
 
 
   //faz set das variaveis para o proximo loop
@@ -225,11 +226,11 @@ void controlo(float reference)
 
 
   //prints para fazer o grafico no matlab
-//Serial.print(micros());
-  
+  //Serial.print(micros());
+
   //Serial.print(" ; ");
   Serial.println(average());
-  
+
 
   /*
     Serial.print("write value in lux :");
@@ -251,7 +252,7 @@ void setup() {
   }
 
 
- 
+
   //calcula constantes com base nos parametros
   K1 = Kp * b;
   K2 = Kp * Ki * sampInterval / 2000000;
@@ -282,20 +283,20 @@ void setup() {
   }
 
   /*analogWrite(led, 255);
-  
-   Serial.print(micros());
-  Serial.print(" ; ");
-   Serial.println(calc_luxs( analogRead(analogPin)));*/
 
- 
+    Serial.print(micros());
+    Serial.print(" ; ");
+    Serial.println(calc_luxs( analogRead(analogPin)));*/
+
+
 }
 
 
 // the loop function runs over and over again forever
 void loop() {
-  
+
   unsigned long startTime = micros();
-  
+
   /*
     //set the led to something
     analogWrite(led, 228);   // turn the LED on (HIGH is the voltage level)
@@ -312,131 +313,142 @@ void loop() {
     Serial.println(average());
   */
 
-     /*Serial.print(micros());
-  Serial.print(" ; ");
-   Serial.println(calc_luxs( analogRead(analogPin)));*/
+  /*Serial.print(micros());
+    Serial.print(" ; ");
+    Serial.println(calc_luxs( analogRead(analogPin)));*/
 
   //valor de delay possivelmente demasiado baixo o grafico obtido tem 10* de delay(se retirado o if)
 
 
-//escolher qual a referencia a seguir provisóriamente em comentário pois os valores de referencia vão ser
-// actualizados quando é dada o novo comando pela janela
+  //escolher qual a referencia a seguir provisóriamente em comentário pois os valores de referencia vão ser
+  // actualizados quando é dada o novo comando pela janela
 
 
 
-  if (luxs>vetor[255])
+  if (luxs > vetor[255])
+  {
+    analogWrite(led, 0);
+    luxs = calc_luxs( analogRead(analogPin));
+    integ = 0;
+    i_ant = 0;
+    shift_left(luxs);
+    y = average();
+  }
+  else
+    controlo(ref);
+
+
+
+
+
+  index = 0;
+
+  if (Serial.available() > 0)
+  {
+    while (Serial.available() > 0)
     {
-      analogWrite(led,0);
-       luxs = calc_luxs( analogRead(analogPin));
-       integ= 0;
-       i_ant = 0;
-  shift_left(luxs);
-  y = average();
-    }
-    else
-      controlo(ref);
 
-
-
-
-
-index = 0;
-
-if (Serial.available() > 0)
-{
-while(Serial.available() > 0)
-{
-  
- if(index < 19) // One less than the size of the array
+      if (index < 19) // One less than the size of the array
       {
-          inChar = Serial.read(); // Read a character
-          inData[index] = inChar; // Store it
-          index++; // Increment where to write next
-          inData[index] = '\0'; // Null terminate the string
+        inChar = Serial.read(); // Read a character
+        inData[index] = inChar; // Store it
+        index++; // Increment where to write next
+        inData[index] = '\0'; // Null terminate the string
       }
 
-}
-Serial.println(inData);
-input = String(inData);
-Serial.println(input);
+    }
+    Serial.println(inData);
+    input = String(inData);
+    Serial.println(input);
 
-if (input.substring(0,3) == "ocu")
-  {
-    if (input[4] == '0')
+    if (input.substring(0, 3) == "ocu")
     {
-      estado = LIVRE;
-      ref = minluxs;
-      Serial.println("changed to free");
-    }
-    else if (input[4] == '1')
-    {
-      estado = OCUPADO;
-      ref = maxluxs;
-      
-      Serial.println("changed to occupied");
-    }
-    else
-      Serial.println("Please revise the intruction to send commands");
-  }
-else if (input.substring(0,3) == "min")
-  {
-    minluxs = input.substring(4,19).toFloat();
-    Serial.print("changed min to");
-    Serial.println(minluxs);
-    if(estado == LIVRE)
+      if (input[4] == '0')
+      {
+        estado = LIVRE;
         ref = minluxs;
-  }
-else if (input.substring(0,3) == "max")
-  {
-    
-    maxluxs = input.substring(4,19).toFloat();
-    Serial.print("changed max to");
-    Serial.println(maxluxs);
-    if(estado == OCUPADO)
+        Serial.println("changed to free");
+      }
+      else if (input[4] == '1')
+      {
+        estado = OCUPADO;
         ref = maxluxs;
-  }
-  else if (input.substring(0,3) == "lux")
-  {
-    ref = input.substring(4,19).toFloat();
-    estado = FREESTYLE;
-    Serial.print("mode set to freestyle ");
-    Serial.println(ref);
-  }
-  else if (input.substring(0,3) == "ffd")
-  {
-    ref = input.substring(4,19).toFloat();
-    
-     if (input[4] == '0')
-    {
-      Serial.println("feedfoward OFF");
-      FFD = false;
+
+        Serial.println("changed to occupied");
+      }
+      else
+        Serial.println("Please revise the intruction to send commands");
     }
-    else if (input[4] == '1')
+    else if (input.substring(0, 3) == "min")
     {
-      Serial.println("feedfoward ON");
-      FFD = true;
+      minluxs = input.substring(4, 19).toFloat();
+      Serial.print("changed min to");
+      Serial.println(minluxs);
+      if (estado == LIVRE)
+        ref = minluxs;
+    }
+    else if (input.substring(0, 3) == "max")
+    {
+
+      maxluxs = input.substring(4, 19).toFloat();
+      Serial.print("changed max to");
+      Serial.println(maxluxs);
+      if (estado == OCUPADO)
+        ref = maxluxs;
+    }
+    else if (input.substring(0, 3) == "lux")
+    {
+      ref = input.substring(4, 19).toFloat();
+      desejado = ref;
+      estado = FREESTYLE;
+      Serial.print("mode set to freestyle ");
+      Serial.println(ref);
+    }
+    else if (input.substring(0, 3) == "ffd")
+    {
+      ref = input.substring(4, 19).toFloat();
+
+      if (input[4] == '0')
+      {
+        Serial.println("feedfoward OFF");
+        FFD = false;
+      }
+      else if (input[4] == '1')
+      {
+        Serial.println("feedfoward ON");
+        FFD = true;
+      }
+      else
+        Serial.println("Please revise the intruction to send commands");
+
+      if (estado == OCUPADO)
+        ref = maxluxs;
+
+      else if (estado == LIVRE)
+        ref = minluxs;
+
+      if (estado == FREESTYLE)
+        ref = desejado;
+
     }
     else
       Serial.println("Please revise the intruction to send commands");
   }
-  else 
-  Serial.println("Please revise the intruction to send commands");
-}
 
- 
- unsigned long endTime = micros();
+
+  unsigned long endTime = micros();
   delayMicroseconds(sampInterval - (endTime - startTime));
 
-  
-  
 
-// esta secção serve para as medidas serem mais precisas(não sei qual o impacto no sistema real)
-/*
-  //le valor do led e calcula luxs
-    luxs = calc_luxs(analogRead(analogPin));
 
-    //faz shift left dos luxs
-    shift_left(luxs);
-*/
+
+  // esta secção serve para as medidas serem mais precisas(não sei qual o impacto no sistema real)
+  /*
+    //le valor do led e calcula luxs
+      luxs = calc_luxs(analogRead(analogPin));
+
+      //faz shift left dos luxs
+      shift_left(luxs);
+  */
 
 }
