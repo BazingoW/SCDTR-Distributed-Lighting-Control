@@ -24,12 +24,12 @@
 //variaveis de HIGH E LOW
 float minluxs = 20, maxluxs = 55;
 
-//variáveis que contem os valores de lux inseridos pelo utilizador
-float luxPedido = 0, luxFeedFoward =0;
+ float integ = 0;      //termo integrador
 
+bool FFD = false;
 
 //variável que entra na função de controlo 
-float ref = 20;
+float ref = minluxs;
 
 String input;
 char inData[20] = "";
@@ -175,7 +175,7 @@ int search(float u)
 //funcao onde e controlado a luminosidade do led atraves de outras cenas
 void controlo(float reference)
 {
-  float integ;      //termo integrador
+ 
 
 
 
@@ -208,8 +208,14 @@ void controlo(float reference)
   //descobre valor led
   u = p + integ;
 
+
   //faz analog write de tal valor
-  analogWrite(led, search(u) + 2);
+
+    
+     if (FFD == true)
+    analogWrite(led, search(u) + search(reference));
+    else 
+    analogWrite(led,search(u));
 
 
   //faz set das variaveis para o proximo loop
@@ -219,9 +225,9 @@ void controlo(float reference)
 
 
   //prints para fazer o grafico no matlab
-Serial.print(micros());
+//Serial.print(micros());
   
-  Serial.print(" ; ");
+  //Serial.print(" ; ");
   Serial.println(average());
   
 
@@ -315,22 +321,24 @@ void loop() {
 
 //escolher qual a referencia a seguir provisóriamente em comentário pois os valores de referencia vão ser
 // actualizados quando é dada o novo comando pela janela
-switch (estado)
-{
-  case OCUPADO:
-    ref = maxluxs;
-  case LIVRE:
-    ref = minluxs;
-    case FREESTYLE:
-    ref = luxPedido;
-    case FEEDFOWARD:
-    ref = luxFeedFoward;  
-}
-  
-if (estado != FEEDFOWARD)
-{
-  controlo(ref);
-}
+
+
+
+  if (luxs>vetor[255])
+    {
+      analogWrite(led,0);
+       luxs = calc_luxs( analogRead(analogPin));
+       integ= 0;
+       i_ant = 0;
+  shift_left(luxs);
+  y = average();
+    }
+    else
+      controlo(ref);
+
+
+
+
 
 index = 0;
 
@@ -348,41 +356,68 @@ while(Serial.available() > 0)
       }
 
 }
+Serial.println(inData);
 input = String(inData);
-if (input.substring(0,2) == "ocu")
+Serial.println(input);
+
+if (input.substring(0,3) == "ocu")
   {
     if (input[4] == '0')
     {
       estado = LIVRE;
       ref = minluxs;
+      Serial.println("changed to free");
     }
     else if (input[4] == '1')
     {
       estado = OCUPADO;
       ref = maxluxs;
+      
+      Serial.println("changed to occupied");
     }
     else
       Serial.println("Please revise the intruction to send commands");
   }
-else if (input.substring(0,2) == "mnl")
+else if (input.substring(0,3) == "min")
   {
     minluxs = input.substring(4,19).toFloat();
+    Serial.print("changed min to");
+    Serial.println(minluxs);
+    if(estado == LIVRE)
+        ref = minluxs;
   }
-else if (input.substring(0,2) == "mxl")
+else if (input.substring(0,3) == "max")
   {
+    
     maxluxs = input.substring(4,19).toFloat();
+    Serial.print("changed max to");
+    Serial.println(maxluxs);
+    if(estado == OCUPADO)
+        ref = maxluxs;
   }
-  else if (input.substring(0,2) == "lux")
+  else if (input.substring(0,3) == "lux")
   {
     ref = input.substring(4,19).toFloat();
-    luxPedido = ref;
     estado = FREESTYLE;
+    Serial.print("mode set to freestyle ");
+    Serial.println(ref);
   }
-  else if (input.substring(0,2) == "ffd")
+  else if (input.substring(0,3) == "ffd")
   {
     ref = input.substring(4,19).toFloat();
-    luxFeedFoward = ref;
-    estado = FEEDFOWARD;
+    
+     if (input[4] == '0')
+    {
+      Serial.println("feedfoward OFF");
+      FFD = false;
+    }
+    else if (input[4] == '1')
+    {
+      Serial.println("feedfoward ON");
+      FFD = true;
+    }
+    else
+      Serial.println("Please revise the intruction to send commands");
   }
   else 
   Serial.println("Please revise the intruction to send commands");
