@@ -12,7 +12,7 @@
 
 
 //com quantos valores se vai fazer a media
-#define tamluxs 15
+#define tamluxs 7
 
 //pin onde se localiza o led (MUDAR PARA DEFINE)
 #define led 9
@@ -22,12 +22,12 @@
 
 
 //variaveis de HIGH E LOW
-float minluxs = 20, maxluxs = 55;
+float minluxs = 20, maxluxs = 50;
 
 float integ = 0;      //termo integrador
 float desejado = 0;
 
-bool FFD = true;
+bool FFD = false; 
 
 //variável que entra na função de controlo
 float ref = minluxs;
@@ -121,7 +121,7 @@ void calibration()
   for (int i = 0; i < 256; i++)
   {
 
-    delay(25);
+    delay(35);
 
     //poe i como pwm do led corresponde à brightnedd
     analogWrite(led, i);
@@ -154,13 +154,13 @@ void shift_left(float current_luxs)
 }
 
 
-//função que utiliza a lookuptable creada para encontrar o valor pwm a aplicar ao LED para chegar ao valor
+//função que utiliza a lookuptable creeada para encontrar o valor pwm a aplicar ao LED para chegar ao valor
 // obtido através da função de controlo
 int search(float u)
 {
   float dif = 0;
   int i = 1;
-  for (i = 1; i < 256; i++)
+  for (i = 1; i < 255; i++)
   {
     dif = vetor[i] - u;
     if (dif > 0)
@@ -169,7 +169,7 @@ int search(float u)
       return i - 1;
     }
   }
-  return i - 5;
+  return i;
 }
 
 
@@ -196,27 +196,44 @@ void controlo(float reference)
   //obtem parte integral
   integ = i_ant + K2 * (e + e_ant);
 
+
+
   // verificar se o valor calculado, composto pelo parte integral não se econtra demasiado, sabendo que o sistema não consegue com corrigir o erro,
   //logo este termo iria crescer indefinidamente)
   // anti-windup
   // slide 25 cap 8
-  if (abs(integ) > adequateValue)
-  {
-    integ = i_ant;
-  }
 
+ 
 
   //descobre valor led
   u = p + integ;
+ float usat = 0;
 
+ usat = u;
+  if (u > vetor[255])
+  {
+    u = vetor[255];
+  }else if (u< vetor[0])
+  {
+    
+    u = vetor[0];
+  }
+  
+  float wind = u - usat;
+
+  integ += wind*K2*1.5;
+
+  
 
   //faz analog write de tal valor
 
+float  pwm = search (u);
+
 
   if (FFD == true)
-    analogWrite(led, search(u) + search(reference)+4);
+    analogWrite(led, pwm + search(reference)+4);
   else
-    analogWrite(led, search(u));
+    analogWrite(led, pwm);
 
 
   //faz set das variaveis para o proximo loop
@@ -226,11 +243,17 @@ void controlo(float reference)
 
 
   //prints para fazer o grafico no matlab
-  //Serial.print(micros());
+  Serial.print(reference);
+  Serial.print(" ; ");
+  
 
-  //Serial.print(" ; ");
-  Serial.println(average());
 
+  Serial.print(average());
+  Serial.print(" ; ");
+
+  Serial.print((pwm/255)* 100);
+  Serial.println(" %");
+  
 
   /*
     Serial.print("write value in lux :");
@@ -287,7 +310,7 @@ void setup() {
     Serial.print(micros());
     Serial.print(" ; ");
     Serial.println(calc_luxs( analogRead(analogPin)));*/
-
+vetor [0] = 0;
 
 }
 
@@ -324,7 +347,7 @@ void loop() {
   // actualizados quando é dada o novo comando pela janela
 
 
-
+/*
   if (luxs > vetor[255])
   {
     analogWrite(led, 0);
@@ -334,7 +357,7 @@ void loop() {
     shift_left(luxs);
     y = average();
   }
-  else
+  else*/
     controlo(ref);
 
 
@@ -433,6 +456,8 @@ void loop() {
     }
     else
       Serial.println("Please revise the intruction to send commands");
+
+    Serial.println(ref);
   }
 
 
