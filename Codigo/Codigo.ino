@@ -54,19 +54,11 @@ float K1, K2, Kp = 0.1, Ki = 38, b = 0.5, y, e , p, u, y_ant = 0, i_ant = 0, e_a
 int estado = LIVRE;
 
 
-
 void setup() {
 
   int i = 0, val = 0;
-  //inicializa tamluxs a -1
-  for (i = 0; i < tamluxs; i++)
-  {
-    last_luxs[i] = -1;
-  }
 
-
-
-  //calcula constantes com base nos parametros
+  //calcula constantes com base nos parametros (esta' nos slides)
   K1 = Kp * b;
   K2 = Kp * Ki * sampInterval / 2000000;
 
@@ -75,62 +67,69 @@ void setup() {
 
   //calibra sistema, cria a lookuptable
   calibration();
+
+  //define minlux a 1/3 da escala
   minluxs = lookUp[85];
+
+  //define minlux a 1/3 da escala
   maxluxs = lookUp[170];
 
   //desliga o LED "a sala está vazia logo, luzes desligadas"
   analogWrite(led, 85);
 
-  //normaliza o vector que contem os ultimos valores lidos para não ocorrer erros nas médias, (falta confirmar se o valor da media chega a ~0 nofim)
+  //inicializa o vetor de last_luxs
   for (i = 0; i < tamluxs + 3; i++)
   {
     delay (50);
-    val = analogRead(analogPin);
 
-    
-
-    shift_left(calc_luxs(val));
-    //Serial.println(average());
-
-
+    //Obtem ultimos valores de lux e 
+    shift_left(calc_luxs(analogRead(analogPin)));
+   
   }
 
-  /*analogWrite(led, 255);
-
-    Serial.print(micros());
-    Serial.print(" ; ");
-    Serial.println(calc_luxs( analogRead(analogPin)));*/
-lookUp [0] = 0;
-
+   //define o primeiro valor da lookup table a zero 
+   lookUp [0] = 0;
 }
 
 
 // the loop function runs over and over again forever
 void loop() {
 
+
+  //define start time
   unsigned long startTime = micros();
- 
+
+  //faz o controlo do sistema
   controlo(ref);
 
+  //define tempo qd controlo acaba
   unsigned long endTime = micros();
-  delayMicroseconds(sampInterval - (endTime - startTime));
 
+  //ve se utilizador pos algum input
+  SerialInputs()
+
+  //espera o tempo necessario para passar 1 sampling interval
+  delayMicroseconds(sampInterval - (endTime - startTime));
 }
 
 
+//usada para alterar ocupacao de secretaria entre outras coisas
 void SerialInputs()
 {
 
-
 int index = 0;
+
+//string de data recebida
 String input;
+
+//vetor de chars recebidos
 char inData[10] = "";
 
-
+  //se utilizador escreveu algo
   if (Serial.available() > 0)
   {
     
-    
+    //le o que o utilizador escreveu
     while (Serial.available() > 0)
     {
      
@@ -142,20 +141,25 @@ char inData[10] = "";
       }
 
     }
-    Serial.println(inData);
-    input = String(inData);
-    Serial.println(input);
 
+    //converte vetor de chars em string
+    input = String(inData);
+    
+    //verrifica se utilizador quer mudar utilização da secretaria
     if (input.substring(0, 3) == "ocu")
     {
+      //se ocu 0
       if (input[4] == '0')
       {
+        //Define como estando livre
         estado = LIVRE;
         ref = minluxs;
         Serial.println("changed to free");
       }
+       //se ocu 1
       else if (input[4] == '1')
       {
+        //Define como estando ocupada
         estado = OCUPADO;
         ref = maxluxs;
 
@@ -164,34 +168,46 @@ char inData[10] = "";
       else
         Serial.println("Please revise the intruction to send commands");
     }
+    //define novo minlux
     else if (input.substring(0, 3) == "min")
     {
       minluxs = input.substring(4, 19).toFloat();
       Serial.print("changed min to");
       Serial.println(minluxs);
+
+      //muda a referencia para novo valor de minluxs
       if (estado == LIVRE)
         ref = minluxs;
     }
+    //define novo maxlux
     else if (input.substring(0, 3) == "max")
     {
 
       maxluxs = input.substring(4, 19).toFloat();
       Serial.print("changed max to");
       Serial.println(maxluxs);
+
+       //muda a referencia para novo valor de minluxs
       if (estado == OCUPADO)
         ref = maxluxs;
     }
+    //se utilizador quer que haja um valor de lux especifico
     else if (input.substring(0, 3) == "lux")
     {
-      ref = input.substring(4, 19).toFloat();
-      desejado = ref;
+      desejado = input.substring(4, 19).toFloat();
+
+      //define esse valor como a referencia
+      ref = desejado;
+
+      //poe a secretaria para estar nem livre, nem ocupada
       estado = FREESTYLE;
+      
       Serial.print("mode set to freestyle ");
       Serial.println(ref);
     }
+    //se utilizador quer ativar ou desativar o feedforward
     else if (input.substring(0, 3) == "ffd")
-    {
-      ref = input.substring(4, 19).toFloat();
+    {    
 
       if (input[4] == '0')
       {
@@ -205,16 +221,6 @@ char inData[10] = "";
       }
       else
         Serial.println("Please revise the intruction to send commands");
-
-      if (estado == OCUPADO)
-        ref = maxluxs;
-
-      else if (estado == LIVRE)
-        ref = minluxs;
-
-      if (estado == FREESTYLE)
-        ref = desejado;
-
     }
     else
       Serial.println("Please revise the intruction to send commands");
@@ -222,7 +228,6 @@ char inData[10] = "";
     Serial.println(ref);
   }
 }
-
 
 //função que calcula a média dos luxs
 float average()
@@ -315,12 +320,15 @@ int search(float u)
 //funcao onde e controlado a luminosidade do led atraves de feedforward e feedback (com antiwindup)
 void controlo(float reference)
 {
-  //lê pino e obtem luxs
+  float usat = 0;
+  float wind;
+  float  pwm;
   
+  //lê pino e obtem luxs  
   shift_left(calc_luxs( analogRead(analogPin)));
+
+  //faz a media dos ultimos lux
   y = average();
-
-
 
   //calcula erro em relacao a referencia ilum_min
   e = reference - y;
@@ -331,40 +339,30 @@ void controlo(float reference)
   //obtem parte integral
   integ = i_ant + K2 * (e + e_ant);
 
-
-
-  // verificar se o valor calculado, composto pelo parte integral não se econtra demasiado, sabendo que o sistema não consegue com corrigir o erro,
-  //logo este termo iria crescer indefinidamente)
-  // anti-windup
-  // slide 25 cap 8
-
- 
-
-  //descobre valor led
+//descobre valor led
   u = p + integ;
- float usat = 0;
 
- usat = u;
+//parte do windud
+usat=u;
   if (u > lookUp[255])
   {
-    u = lookUp[255];
+    usat = lookUp[255];
   }else if (u< lookUp[0])
   {
     
-    u = lookUp[0];
+    usat = lookUp[0];
   }
-  
-  float wind = u - usat;
 
+  //apenas e diferentde de 0 se estiver saturado
+  wind= usat - u;
+
+  //adicionar a proxima iteracao integradora o anti windup para o sistema nao integrar bue
   integ += wind*K2*1.5;
 
-  
+  //procura valor na lookup table
+  pwm= search (u);
 
-  //faz analog write de tal valor
-
-float  pwm = search (u);
-
-
+  //write to pin pwm, if feedforward is on add that as well
   if (FFD == true)
     analogWrite(led, pwm + search(reference)+4);
   else
@@ -377,25 +375,12 @@ float  pwm = search (u);
   e_ant = e;
 
 
-  //prints para fazer o grafico no matlab
+ //prints pedidos pelo prof
   Serial.print(reference);
   Serial.print(" ; ");
-  
-
-
   Serial.print(average());
   Serial.print(" ; ");
-
   Serial.print((pwm/255)* 100);
   Serial.println(" %");
-  
-
-  /*
-    Serial.print("write value in lux :");
-    Serial.println(u);
-
-    Serial.print("write value :");
-    Serial.println(search(u));
-  */
 }
 
