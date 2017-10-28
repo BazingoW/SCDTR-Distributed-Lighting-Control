@@ -106,7 +106,7 @@ void loop() {
   unsigned long endTime = micros();
 
   //ve se utilizador pos algum input
-  SerialInputs()
+  SerialInputs();
 
   //espera o tempo necessario para passar 1 sampling interval
   delayMicroseconds(sampInterval - (endTime - startTime));
@@ -296,7 +296,7 @@ void shift_left(float current_luxs)
 
 
 //procura na lookuptable o valor pwm de LED correspondente aos lux pretendidos
-int search(float u)
+float search(float u)
 {
   
   int i = 1;
@@ -360,11 +360,11 @@ usat=u;
   integ += wind*K2*1.5;
 
   //procura valor na lookup table
-  pwm= search (u);
+  pwm = search (u);
 
   //write to pin pwm, if feedforward is on add that as well
   if (FFD == true)
-    analogWrite(led, pwm + search(reference)+4);
+    analogWrite(led, search(reference + u));
   else
     analogWrite(led, pwm);
 
@@ -380,7 +380,11 @@ usat=u;
   Serial.print(" ; ");
   Serial.print(average());
   Serial.print(" ; ");
-  Serial.print((pwm/255)* 100);
+  if (FFD == true)
+    Serial.print(((search(reference+u))/255)* 100);
+  else
+    Serial.print((pwm/255)* 100);
   Serial.println(" %");
+  Serial.println(u);
 }
 
