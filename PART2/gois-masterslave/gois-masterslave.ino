@@ -22,7 +22,8 @@ int ledpin = 9;
 int pin_verif = 2;
 int address, address_aux;
 long  temp;
-bool pronto = false;
+int flag = 0;
+bool on=0;
 
 void setup() {
 
@@ -43,31 +44,44 @@ void setup() {
   Wire.begin(address); // join i2c bus (address optional for master)
   Wire.onReceive(receiveEvent); // register event
   Serial.begin(9600);           // start serial for output
-  
-}
 
 
-void inicio()
-{
-  //calibrar();
-  Serial.print("ola");
-}
-  
-void loop() {
   Wire.beginTransmission(address_aux); // transmit to device #8
- Wire.write("x is ");        // sends five bytes
-  Wire.write(address);              // sends one byte
+  Wire.write("O");        // sends five bytes
   Wire.endTransmission();    // stop transmitting
+  Serial.println("SentData");
+}
 
-  
-  delay(100);
 
-  if(millis() - temp > 300)
-  {
-    pronto = false;
-  }
-  Serial.print(pronto);
-  
+
+void loop() {
+
+
+if(flag>0)
+{
+if(flag==1)
+{
+  Wire.beginTransmission(address_aux); // transmit to device #8
+  Wire.write("R");        // sends five bytes
+  Wire.endTransmission();    // stop transmitting
+  Serial.println("SentData");
+calibrar1();
+on=1;
+
+}
+else if(flag==2)
+{
+  calibrar1();
+  on=1;
+}
+flag=0;
+}
+
+
+if(on)
+{
+  //Main Loop
+}
 }
 
 //função que calcula o valor de luxs
@@ -105,7 +119,7 @@ void calibrar()
     digitalWrite(ledpin, LOW);
   }
     
-  delay(250);
+  delay(5000);
 
   Serial.println(calc_luxs(analogRead(analogPin)));
   
@@ -117,7 +131,7 @@ void calibrar()
   {
     digitalWrite(ledpin, LOW);
   }
-    
+    delay(5000);
   Serial.println(calc_luxs(analogRead(analogPin)));
   
   
@@ -129,19 +143,56 @@ void calibrar()
 // function that executes whenever data is received from master
 // this function is registered as an event, see setup()
 void receiveEvent(int howMany) {
-  bool pronto_antes = pronto;
-  while (1 < Wire.available()) { // loop through all but the last
-    char c = Wire.read(); // receive byte as a character
-    Serial.print(c);         // print the character
-    pronto = true;
-    temp = millis();
-  }
 
-  if(pronto_antes == false && pronto == true)
-  {
-    inicio();
-  }
-  
-  int x = Wire.read();    // receive byte as an integer
-  Serial.println(x);         // print the integer
+int index = 0;
+
+//string de data recebida
+String input;
+
+//vetor de chars recebidos
+char inData[10] = "";
+
+  while (Wire.available()>0) { // loop through all but the last
+
+        inData[index] =  Wire.read(); //Read a character
+        index++; // Increment where to write next
+       // inData[index] = '\0'; // Null terminate the string
+      
+    
+   }
+   Serial.println("ReceivedData");
+   Serial.println(inData);
+
+if(inData[0]=='O')
+    {//se recebi um O, reenvio um R e calibro
+      flag=1;
+    }
+    else if(inData[0]=='R')
+    {
+     flag=2;
+    }
+   
 }
+
+
+void calibrar1()
+{
+
+   Serial.println("CalibFunc");
+    digitalWrite(ledpin, LOW);
+ delay(1000);
+    digitalWrite(ledpin, HIGH);
+  
+
+   delay(1000);
+    digitalWrite(ledpin, LOW);
+   delay(1000);
+ 
+  
+  
+  
+  
+  
+}
+
+
