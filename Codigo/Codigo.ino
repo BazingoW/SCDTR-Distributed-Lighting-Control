@@ -35,6 +35,9 @@ bool FFD = false;
 //variável que entra na funcão de controlo
 float ref = minluxs;
 
+//variavel que corresponde ao declive da recta de calibração
+float declive = 0;
+
 //periodo de amostragem em microsegundos
 unsigned long sampInterval = 10000; //10 milisecs
 
@@ -66,13 +69,21 @@ void setup() {
   Serial.begin(250000);
 
   //calibra sistema, cria a lookuptable
-  calibration();
+ // calibration();
+ recta_luxs();
 
   //define minlux a 1/3 da escala
   minluxs = lookUp[85];
 
   //define minlux a 1/3 da escala
   maxluxs = lookUp[170];
+
+//define minlux a 1/3 da escala
+  minluxs =  85/declive;
+
+  //define minlux a 1/3 da escala
+  maxluxs = 170/declive;
+
 
   //desliga o LED "a sala está vazia logo, luzes desligadas"
   analogWrite(led, 85);
@@ -260,8 +271,12 @@ float calc_luxs(int val)
   R2 = ((r1 * 5) / tensao) - r1;
 
   //uso de reta logaritmica para converter de R para lux
-  luxs = ((log10(R2) - 4.8451) / -0.7186);
+  //luxs = ((log10(R2) - 4.8451) / -0.7186);
+  luxs = log10(R2) - 6 / (-0.5);
   luxs = pow(10, luxs);
+
+  Serial.println(R2);
+  delay(1000);
 
   return luxs;
 }
@@ -281,10 +296,30 @@ void calibration()
     lookUp[i] = calc_luxs(analogRead(analogPin));
 
     //prints para ver o que esta a acontecer
-    Serial.print(lookUp[i]);
+    Serial.print(analogRead(analogPin));
     Serial.print(' ');
     Serial.println(i);
   }
+}
+
+
+void recta_luxs()
+{
+  analogWrite(led,200);
+
+  delay(1000);
+  float luxs = 0;
+  luxs =  calc_luxs(analogRead(analogPin));
+  Serial.print(calc_luxs(analogRead(analogPin)));
+  Serial.print(' ');
+  Serial.println(200); 
+  declive = 200/luxs;
+  Serial.println(declive);
+  delay(1000);
+
+  
+
+   
 }
 
 //guarda valor de lux num vetor com ultimos valores de lux
@@ -344,6 +379,7 @@ void controlo(float reference)
 
 //parte do windud
 usat=u;
+/*
   if (u > lookUp[255])
   {
     usat = lookUp[255];
@@ -351,22 +387,49 @@ usat=u;
   {
     
     usat = lookUp[0];
+  }*/
+    if (u > 255/declive)
+  {
+    usat = 255/declive;
+  }else if (u< 0)
+  {
+    
+    usat = 0;
   }
 
+  
+
   //apenas e diferentde de 0 se estiver saturado
-  wind= usat - u;
+  wind = usat - u;
 
   //adicionar a proxima iteracao integradora o anti windup para o sistema nao integrar bue
   integ += wind*K2*1.5;
 
   //procura valor na lookup table
-  pwm = search (u);
-
+  // pwm = search (u);
+  pwm = declive * u ;
+  
+/*
   //write to pin pwm, if feedforward is on add that as well
   if (FFD == true)
-    analogWrite(led, search(reference + u));
+    //analogWrite(led, search(reference + u));
+    analogWrite(led, declive * (reference + u));
   else
-    analogWrite(led, pwm);
+    analogWrite(led, pwm);*/
+
+//write to pin pwm, if feedforward is on add that as well
+  if (FFD == true)
+    //analogWrite(led, search(reference + u));
+{ 
+  pwm = declive * (reference + u);
+}  
+
+if(pwm <0)
+    pwm = 0;
+if(pwm > 255)
+    pwm = 255;
+
+analogWrite(led,pwm);
 
 
   //faz set das variaveis para o proximo loop
@@ -374,14 +437,15 @@ usat=u;
   i_ant = integ;
   e_ant = e;
 
-
+  
  //prints pedidos pelo prof
   Serial.print(reference);
   Serial.print(" ; ");
   Serial.print(average());
   Serial.print(" ; ");
   if (FFD == true)
-    Serial.print(((search(reference+u))/255)* 100);
+   // Serial.print(((search(reference+u))/255)* 100);
+    Serial.print(((declive*(reference+u))/255)* 100);
   else
     Serial.print((pwm/255)* 100);
   Serial.println(" %");
