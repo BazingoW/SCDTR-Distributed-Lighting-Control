@@ -5,7 +5,7 @@
 
 //Resistencia do circuito do LDR
 #define r1 10000.0
-#define rho 0.01
+#define rh 0.01
 
 float kself, kmutuo;
 int ledpin = 9;
@@ -21,17 +21,34 @@ byte buffer[3] ;
 
 
 //System
-int k11 = 2, k12 = 1, k21 = 1, k22 = 2;
-int L1 = 150, o1 = 30, L2 = 80, o2 = 0;
-int K[][] = {{k11, k12},{k21, k22}};
-int L[][] = {{L1}, {L2}};
-int o[][] = {{o1},{o2}};
+float k11 = 2, k12 = 1, k21 = 1, k22 = 2;
+float L1 = 150, o1 = 30, L2 = 80, o2 = 0;
+float K[][2] = {{k11, k12},{k21, k22}};
+float L[][1] = {{L1}, {L2}};
+float o[][1] = {{o1},{o2}};
 
 //Cost function
-int c1 = 1, c2 = 1;
-int c[] = {c1, c2};
+float c1 = 1, c2 = 1;
+float c[] = {c1, c2};
 float q1 = 0.0, q2 = 0.0;
-float Q[][]={{q1, 0},{0 q2}};
+float Q[][2]={{q1, 0},{0, q2}};
+
+   //Consensus variables
+  float rho = 0.01;
+  //node 1
+  float d1[] = {0,0};
+  float d1_av[] = {0,0};
+  float d2_copy[] = {0,0};
+  float y1[] = {0,0};
+  float k1[] = {k11,k12};
+
+  //necessário? i think so
+  //node 2
+  float d2[] = {0,0};
+  float d2_av[] = {0,0};
+  float d1_copy[] = {0,0};
+  float y2[] = {0,0};
+  float k2[] = {k21,k22};
 
 
 void setup() {
@@ -57,14 +74,7 @@ void setup() {
   buffer[1] = '0'+address;
   buffer[2] = 123;
 
-   //Consensus variables
-float rho = 0.01;
-  //node 1
-  int d1[][] = {{0},{0}};
-  int d1_av[][] = {{0},{0}};
-  int d1_copy[][] = {{0},{0}};
-  int y1[][] = {{0},{0}};
-  int k1[][] = {{k11},{k22}};
+
 
   
   
@@ -112,8 +122,8 @@ if(on)
   //Main Loop
   // insert in 
   
-  transmit(buffer,address_aux);
-  delay(1000);
+  //transmit(buffer,address_aux);
+ // delay(1000);
 }
 }
 
@@ -131,7 +141,8 @@ float calc_luxs(int val)
   R2 = ((r1 * 5) / tensao) - r1;
 
   //uso de reta logaritmica para converter de R para lux
-  luxs = ((log10(R2) - 4.8451) / -0.7186);
+  //luxs = ((log10(R2) - 4.8451) / -0.7186);
+  luxs = ((log10(R2) - 4.5533) / -3.1576);
   luxs = pow(10, luxs);
 
   return luxs;
@@ -214,13 +225,13 @@ void calibrar1()
 
    Serial.println("CalibFunc");
     analogWrite(ledpin, 0);
- delay(1000);
+ delay(200);
     analogWrite(ledpin, 255);
   
 
-   delay(1000);
+   delay(200);
     analogWrite(ledpin, 0);
-   delay(1000);
+   delay(200);
    
     if(address == 1)
   {
@@ -231,7 +242,7 @@ void calibrar1()
     analogWrite(ledpin, 0);
   }
     
-  delay(2500);
+  delay(500);
  
   if(address == 1)
   {
@@ -244,7 +255,7 @@ void calibrar1()
     
   }
   
-  delay(2500);
+  delay(500);
   
   if(address == 2)
   {
@@ -255,7 +266,7 @@ void calibrar1()
     analogWrite(ledpin, 0);
   }
     
-    delay(2500);
+    delay(500);
     
   if(address == 2)
   {
@@ -267,7 +278,7 @@ void calibrar1()
     kmutuo = (calc_luxs(analogRead(analogPin)))/255.0;
   }
  
-  delay(2500);
+  delay(500);
    
   analogWrite(ledpin, 0);
   
@@ -280,13 +291,17 @@ void calibrar1()
 
 void iteracao()
 {
+  
   int i;
-
-  for(i = 0; i <= 50; i++)
+  float min_best_1[50];
+  float z11,z12;
+  float min_unconstrained = 0;
+  
+  for(i = 0; i < 50; i++)
   {
     //node 1
-    int d11_best = -1;
-    int d12_best = -1;
+    float d11_best = -1;
+    float d12_best = -1;
     
     min_best_1[i] = 100000;
     
@@ -294,27 +309,31 @@ void iteracao()
     float sol_linear_0 = 1, sol_linear_100 = 1;
     
   
-    z11 = -c1 - y1[0][0] + rho*d1_av[0][0];
-    z12 = -y1[1][0] +  rho*d1_av[1][0];
+    z11 = -c1 - y1[0] + rho*d1_av[0];
+    z12 = -y1[1] +  rho*d1_av[1];
     
   
-    u1 = o1-L1;
-    u2 = 0;
-    u3 = 100;
-    p11 = 1/(rho+q1);
-    p12 = 1/rho;
+    float u1 = o1-L1;
+    float u2 = 0;
+    float u3 = 100;
+    float p11 = 1/(rho+q1);
+    float p12 = 1/rho;
     
   
-    n = k11*k11*p11 + k12*k12*p12;
-    w1 = -k11*p11*z11 - k12*z12*p12;
-    w2 = -z11*p11;
-    w3 = z11*p11;
+    float n = k11*k11*p11 + k12*k12*p12;
+    float w1 = -k11*p11*z11 - k12*z12*p12;
+    float w2 = -z11*p11;
+    float w3 = z11*p11;
     
 
     //compute unconstrained minimum
     int d11u = p11*z11;
     int d12u = p12*z12;
-    
+
+
+    //guardar valores
+    float best_d11[50];
+    float best_d12[50] ; 
 
     //check feasibility of unconstrained minimum using local constraints
     if(d11u < 0)
@@ -332,7 +351,7 @@ void iteracao()
     //compute function value and if best store new optimum
     if(sol_unconstrained)
     {
-      min_unconstrained = 0.5*q1*d11u^2 + c1*d11u + y1[0][0]*(d11u-d1_av[0][0]) + y1[1][0]*(d12u-d1_av[1][0]) + rho/2*(d11u - d1_av[0][0])^2 + rho/2*(d12u-d1_av[1][0])^2;
+     min_unconstrained = sq(0.5*q1*d11u) + c1*d11u + y1[0]*(d11u-d1_av[0]) + y1[1]*(d12u-d1_av[1]) + rho/2*sq(d11u - d1_av[0]) + rho/2*sq(d12u-d1_av[1]);
 
       if(min_unconstrained < min_best_1[i])
       {
@@ -364,7 +383,7 @@ void iteracao()
       //compute function value and if best store new optimum
       if(sol_boundary_linear)
       {
-        min_boundary_linear = 0.5*q1*d11bl^2 + c1*d11bl + y1[0][0]*(d11bl-d1_av[0][0]) + y1[1][0]*(d12bl-d1_av[1][0]) + rho/2*(d11bl-d1_av[0][0])^2 + rho/2*(d12bl-d1_av[1][0])^2;
+        float min_boundary_linear = 0.5*q1*sq(d11bl) + c1*d11bl + y1[0]*(d11bl-d1_av[0]) + y1[1]*(d12bl-d1_av[1]) + rho/2*sq(d11bl-d1_av[0]) + rho/2*sq(d12bl-d1_av[1]);
 
         if(min_boundary_linear < min_best_1[i])
         {
@@ -376,25 +395,26 @@ void iteracao()
 
 
       //compute minimum constrained to boundary
-      int d11b0 = 0
+      int d11b0 = 0;
       int d12b0 = p12*z12;
       
 
       //check feasibility of minimum constrained to 0 boundary
-      if(d11bo > 100)
+      //aqui alguma coisa estranha
+      if(d11b0 > 100)
       {
         sol_boundary_0 = 0;
       }
       if(k11*d11b0 + k12*d12b0 < L1-o1)
       {
-        sol_boundary_o = 0;
+        sol_boundary_0 = 0;
       }
       
 
       //compute function value and if the best store new optimum
       if(sol_boundary_0)
       {
-        min_boundary_0 = 0.5*q1*d11b0^2 + c1*d11b0 + y1[0][0]*(d11b0-d1_av[0][0]) + y1[1][0]*(d12b0-d1_av(2)) + rho/2*(d11b0-d1_av[0][0])^2 + rho/2*(d12b0-d1_av[1][0])^2;
+        float min_boundary_0 = 0.5*q1*sq(d11b0) + c1*d11b0 + y1[0]*(d11b0-d1_av[0]) + y1[1]*(d12b0-d1_av[2]) + rho/2*sq(d11b0-d1_av[0]) + rho/2*sq(d12b0-d1_av[1]);
 
         if(min_boundary_0 < min_best_1[i])
         {
@@ -412,7 +432,7 @@ void iteracao()
       //check feasibility of minimum constrained to 100 boundary
       if(d11b0 < 0)
       {
-        sol_boundary_100 = 0
+        sol_boundary_100 = 0;
       }
       if(k11*d11b100 + k12*d12b100 < L1-o1)
       {
@@ -423,7 +443,7 @@ void iteracao()
       //compute function value and if best store new optimum
       if(sol_boundary_100)
       {
-        min_boundary_100 = 0.5*q1*d11b100^2 + c1*d11b100 + y1[0][0]*(d11b100-d1_av[0][0]) + y1[1][0]*(d12b100-d1_av[1][0]) + rho/2*(d11b100-d1_av[0][0])^2 + rho/2*(d12b100-d1_av[1][0])^2;
+        float min_boundary_100 = 0.5*q1*sq(d11b100) + c1*d11b100 + y1[0]*(d11b100-d1_av[0]) + y1[1]*(d12b100-d1_av[1]) + rho/2*sq(d11b100-d1_av[0]) + rho/2*sq(d12b100-d1_av[1]);
 
         if(min_boundary_100 < min_best_1[i])
         {
@@ -442,8 +462,8 @@ void iteracao()
       int det4 = n*(rho+q1)*common;
       int x1 = det1*w1 + det2*w2;
       int x2 = det3*w1 + det4*w2;
-      int v1 = det1*u1 + det2*u2; %u2 = 0 so this can be simplified
-      int v2 = det3*u1 + det4*u2; %u2 = 0 so this can be simplified
+      int v1 = det1*u1 + det2*u2; //u2 = 0 so this can be simplified
+      int v2 = det3*u1 + det4*u2; //u2 = 0 so this can be simplified
       int d11l0 = p11*z11+p11*k11*(x1-v1)+p11*(x2-v2);
       int d12l0 = p12*z12+p12*k12*(x1-v1);
       //check feasibility
@@ -456,7 +476,7 @@ void iteracao()
       //compute function value and if best store new optimum
       if(sol_linear_0)
       {
-        min_linear_0 = 0.5*q1*d11l0^2 + c1*d11l0 + y1[0][0]*(d11l0-d1_av[0][0]) + y1[1][0]*(d12l0-d1_av[1][0]) + rho/2*(d11l0-d1_av[0][0])^2 + rho/2*(d12l0-d1_av[1][0])^2;
+        float min_linear_0 = 0.5*q1*sq(d11l0) + c1*d11l0 + y1[0]*(d11l0-d1_av[0]) + y1[1]*(d12l0-d1_av[1]) + rho/2*sq(d11l0-d1_av[0]) + rho/2*sq(d12l0-d1_av[1]);
 
         if(min_linear_0 < min_best_1[1])
         {
@@ -469,17 +489,17 @@ void iteracao()
 
 
       //compute minimum constrained to linear and 100 boundary
-      int common = (rho+q1)/((rho+q1)*n-k11*k11); //ou float?
-      int det1 = common;
-      int det2 = k11*common;
-      int det3 = det2;
-      int det4 = n*(rho+q1)*common;
-      int x1 = det1*w1 + det2*w3;
-      int x2 = det3*w1 + det4*w3;
-      int v1 = det1*u1 + det2*u3; 
-      int v2 = det3*u1 + det4*u3; 
-      int d11l100 = p11*z11+p11*k11*(x1-v1)-p11*(x2-v2);
-      int d12l100 = p12*z12+p12*k12*(x1-v1);
+       common = (rho+q1)/((rho+q1)*n-k11*k11); //ou float?
+       det1 = common;
+       det2 = k11*common;
+       det3 = det2;
+       det4 = n*(rho+q1)*common;
+       x1 = det1*w1 + det2*w3;
+       x2 = det3*w1 + det4*w3;
+       v1 = det1*u1 + det2*u3; 
+       v2 = det3*u1 + det4*u3; 
+      float d11l100 = p11*z11+p11*k11*(x1-v1)-p11*(x2-v2);
+      float d12l100 = p12*z12+p12*k12*(x1-v1);
 
 
       //check feasibility
@@ -492,7 +512,7 @@ void iteracao()
       //compute function value and if best store new optimum
       if(sol_linear_100)
       {
-        min_linear_100 = 0.5*q1*d11l100^2 + c1*d11l100 + y[0][0]*(d11l100-d1_av[0][0]) + y1[1][0]*(d12l100-d1_av[1][0]) + rho/2*(d11l100-d1_av[0][0])^2 + rho/2*(d12l100-d1_av[1][0]))^2;
+       float  min_linear_100 = 0.5*q1*sq(d11l100) + c1*d11l100 + y1[0]*(d11l100-d1_av[0]) + y1[1]*(d12l100-d1_av[1]) + rho/2*sq(d11l100-d1_av[0]) + rho/2*sq(d12l100-d1_av[1]);
 
         if(min_linear_100 < min_best_1[1])
         {
@@ -504,21 +524,25 @@ void iteracao()
 
 
       //store data and save for next cycle
-      int best_d11[i] = d11_best;
-      int best_d12[i] = d12_best;
-      int d1[][] = {{d11_best},{d12_best}};
+      best_d11[i] = d11_best;
+      best_d12[i] = d12_best;
+      float d1[] = {d11_best,d12_best};
 
 
       //compute average with available knowledge
-      int d1_av = (d1+d2_copy)/2;
+      d1_av[0] = (d1[0] + d2_copy[0])/2;
+      d1_av[1] = (d1[1] + d2_copy[1])/2;
       //update local lagrangian
-      int y1 = y1 + rho*(d1-d1_av);
+       y1[0] = y1[0] + rho*(d1[0]-d1_av[0]);
+      y1[1] = y1[1] + rho*(d1[1]-d1_av[1]);
       //send node 1 solution to neighboors
-      int d1_copy = d1; 
+       //d1_copy = d1;
+       //dunno if this works
+       d1_copy[0] = d1[0];
+       d1_copy[1] = d1[1];
   }
   
 }
-
 
 
 void transmit(byte* message,int address_dest)
