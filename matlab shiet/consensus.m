@@ -174,7 +174,7 @@ for i=1:50,
    %update local lagrangian
    y1 = y1 + rho*(d1-d1_av);
    % send node 1 solution to neighboors
-   d1_copy = d1;
+   d1_copy = d1
    
    %%
    % node 2 
@@ -328,7 +328,7 @@ for i=1:50,
    % Update local lagrangian
    y2 = y2 + rho*(d2-d2_av);
    % send solution to neighbors
-   d2_copy = d2;
+   d2_copy = d2
    
    %save data for plots
    av1(i) = d1_av(1);

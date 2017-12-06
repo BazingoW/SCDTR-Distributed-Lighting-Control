@@ -38,7 +38,7 @@ float Q[][2]={{q1, 0},{0, q2}};
   //node 1
   float d1[] = {0,0};
   float d1_av[] = {0,0};
-  float d2_copy[] = {0,0};
+  float d_copy[] = {0,0};
   float y1[] = {0,0};
   float k1[] = {k11,k12};
 
@@ -46,7 +46,6 @@ float Q[][2]={{q1, 0},{0, q2}};
   //node 2
   float d2[] = {0,0};
   float d2_av[] = {0,0};
-  float d1_copy[] = {0,0};
   float y2[] = {0,0};
   float k2[] = {k21,k22};
 
@@ -62,6 +61,10 @@ void setup() {
   {
     address = 2;
     address_aux = 1;
+     k11 = k22;
+     k12 = k21; 
+     L1 = L2;
+     o1 = o2;
   }
   else
   {
@@ -80,7 +83,9 @@ void setup() {
   
   Wire.begin(address); // join i2c bus (address optional for master)
   Wire.onReceive(receiveEvent); // register event
-  Serial.begin(9600);           // start serial for output
+  Serial.begin(19200);           // start serial for output
+
+  
   
   Wire.beginTransmission(address_aux); // transmit to device
   Wire.write("O");       
@@ -121,7 +126,11 @@ if(on)
 {
   //Main Loop
   // insert in 
-  
+  if (address == 1)
+  {
+    Serial.println("please w8 a few seconds for the consensus to be operational");
+    iteracao();
+  }
   //transmit(buffer,address_aux);
  // delay(1000);
 }
@@ -216,7 +225,15 @@ if(inData[0]=='O')
     {
      flag=2;
     }
-   
+   else if(inData[0]== '%')
+   {
+      Serial.println(int(inData[1]));
+      Serial.println(int(inData[2]));
+      d_copy[0] = int(inData[1]);
+      d_copy[1] = int(inData[2]);
+      iteracao();
+      
+   }
 }
 
 
@@ -292,18 +309,14 @@ void calibrar1()
 void iteracao()
 {
   
-  int i;
-  float min_best_1[50];
   float z11,z12;
   float min_unconstrained = 0;
   
-  for(i = 0; i < 50; i++)
-  {
     //node 1
     float d11_best = -1;
     float d12_best = -1;
     
-    min_best_1[i] = 100000;
+    float min_best_1 = 100000;
     
     float sol_unconstrained = 1, sol_boundary_linear = 1, sol_boundary_0 = 1, sol_boundary_100 = 1;
     float sol_linear_0 = 1, sol_linear_100 = 1;
@@ -329,8 +342,7 @@ void iteracao()
     //compute unconstrained minimum
     int d11u = p11*z11;
     int d12u = p12*z12;
-
-
+   
     //guardar valores
     float best_d11[50];
     float best_d12[50] ; 
@@ -341,8 +353,12 @@ void iteracao()
       sol_unconstrained = 0;
     }
     
-
     if(d11u > 100)
+    {
+      sol_unconstrained = 0;
+    }
+
+    if (k11*d11u + k12*d12u < L1-o1)
     {
       sol_unconstrained = 0;
     }
@@ -351,21 +367,22 @@ void iteracao()
     //compute function value and if best store new optimum
     if(sol_unconstrained)
     {
-     min_unconstrained = sq(0.5*q1*d11u) + c1*d11u + y1[0]*(d11u-d1_av[0]) + y1[1]*(d12u-d1_av[1]) + rho/2*sq(d11u - d1_av[0]) + rho/2*sq(d12u-d1_av[1]);
+     min_unconstrained = 0.5*q1*sq(d11u) + c1*d11u + y1[0]*(d11u-d1_av[0]) + y1[1]*(d12u-d1_av[1]) + rho/2*sq(d11u - d1_av[0]) + rho/2*sq(d12u-d1_av[1]);
 
-      if(min_unconstrained < min_best_1[i])
+      if(min_unconstrained < min_best_1)
       {
         d11_best = d11u;
         d12_best = d12u;
-        min_best_1[i] = min_unconstrained;
+        min_best_1= min_unconstrained;
       }
     }
-
+      Serial.print("unconstrained");
+      Serial.println(d11_best);
     
       //compute minimum constrained to linear boundary
       int d11bl = p11*z11+p11*k11/n*(w1-u1);
       int d12bl = p12*z12+p12*k12/n*(w1-u1);
-
+  
 
       //check feasibility of minimum constrained to linear boundary
       if(d11bl < 0)
@@ -385,14 +402,19 @@ void iteracao()
       {
         float min_boundary_linear = 0.5*q1*sq(d11bl) + c1*d11bl + y1[0]*(d11bl-d1_av[0]) + y1[1]*(d12bl-d1_av[1]) + rho/2*sq(d11bl-d1_av[0]) + rho/2*sq(d12bl-d1_av[1]);
 
-        if(min_boundary_linear < min_best_1[i])
+        
+        
+
+        if(min_boundary_linear < min_best_1)
         {
           d11_best = d11bl;
           d12_best = d12bl;
-          min_best_1[i] = min_boundary_linear;
+          min_best_1 = min_boundary_linear;
         }
       }
-
+        
+      Serial.print("boundary_linear: ");
+      Serial.println(d11_best);
 
       //compute minimum constrained to boundary
       int d11b0 = 0;
@@ -416,14 +438,16 @@ void iteracao()
       {
         float min_boundary_0 = 0.5*q1*sq(d11b0) + c1*d11b0 + y1[0]*(d11b0-d1_av[0]) + y1[1]*(d12b0-d1_av[2]) + rho/2*sq(d11b0-d1_av[0]) + rho/2*sq(d12b0-d1_av[1]);
 
-        if(min_boundary_0 < min_best_1[i])
+        if(min_boundary_0 < min_best_1)
         {
           d11_best = d11b0;
           d12_best = d12b0;
-          min_best_1[i] = min_boundary_0;
+          min_best_1 = min_boundary_0;
         }
       }
 
+      Serial.print("min_boundary: ");
+      Serial.println(d11_best);
 
       //compute minimum constrained to 100 boundary
       int d11b100 = 100;
@@ -445,27 +469,34 @@ void iteracao()
       {
         float min_boundary_100 = 0.5*q1*sq(d11b100) + c1*d11b100 + y1[0]*(d11b100-d1_av[0]) + y1[1]*(d12b100-d1_av[1]) + rho/2*sq(d11b100-d1_av[0]) + rho/2*sq(d12b100-d1_av[1]);
 
-        if(min_boundary_100 < min_best_1[i])
+        if(min_boundary_100 < min_best_1)
         {
           d11_best = d11b100;
           d12_best = d12b100;
-          min_best_1[1] = min_boundary_100;
+          min_best_1 = min_boundary_100;
         }
       }
 
+      Serial.print("min_boundary100: ");
+      Serial.println(d11_best);
 
       //compute minimum constrained to linear and zero boundary
-      int common = (rho+q1)/((rho+q1)*n-k11*k11); //ou float?
-      int det1 = common;
-      int det2 = -k11*common;
-      int det3 = det2;
-      int det4 = n*(rho+q1)*common;
-      int x1 = det1*w1 + det2*w2;
-      int x2 = det3*w1 + det4*w2;
-      int v1 = det1*u1 + det2*u2; //u2 = 0 so this can be simplified
-      int v2 = det3*u1 + det4*u2; //u2 = 0 so this can be simplified
-      int d11l0 = p11*z11+p11*k11*(x1-v1)+p11*(x2-v2);
-      int d12l0 = p12*z12+p12*k12*(x1-v1);
+      float common = (rho+q1)/((rho+q1)*n-k11*k11); //ou float?
+      float det1 = common;
+      float det2 = -k11*common;
+      float det3 = det2;
+      float det4 = n*(rho+q1)*common;
+
+      
+
+      
+      float x1 = det1*w1 + det2*w2;
+      float x2 = det3*w1 + det4*w2;
+      float v1 = det1*u1 + det2*u2; //u2 = 0 so this can be simplified
+      float v2 = det3*u1 + det4*u2; //u2 = 0 so this can be simplified
+      float d11l0 = p11*z11+p11*k11*(x1-v1)+p11*(x2-v2);
+      float d12l0 = p12*z12+p12*k12*(x1-v1);
+   
       //check feasibility
       if(d11l0 > 100)
       {
@@ -477,16 +508,19 @@ void iteracao()
       if(sol_linear_0)
       {
         float min_linear_0 = 0.5*q1*sq(d11l0) + c1*d11l0 + y1[0]*(d11l0-d1_av[0]) + y1[1]*(d12l0-d1_av[1]) + rho/2*sq(d11l0-d1_av[0]) + rho/2*sq(d12l0-d1_av[1]);
-
-        if(min_linear_0 < min_best_1[1])
+      Serial.print("valmin_linear_0: ");
+      Serial.println(min_linear_0);
+        if(min_linear_0 < min_best_1)
         {
           d11_best = d11l0;
           d12_best = d12l0;
-          min_best_1[i] = min_linear_0;
+          min_best_1 = min_linear_0;
         }
         
       }
 
+      Serial.print("min_linear_0: ");
+      Serial.println(d11_best);
 
       //compute minimum constrained to linear and 100 boundary
        common = (rho+q1)/((rho+q1)*n-k11*k11); //ou float?
@@ -514,33 +548,47 @@ void iteracao()
       {
        float  min_linear_100 = 0.5*q1*sq(d11l100) + c1*d11l100 + y1[0]*(d11l100-d1_av[0]) + y1[1]*(d12l100-d1_av[1]) + rho/2*sq(d11l100-d1_av[0]) + rho/2*sq(d12l100-d1_av[1]);
 
-        if(min_linear_100 < min_best_1[1])
+        if(min_linear_100 < min_best_1)
         {
           d11_best = d11u;
           d12_best = d12u;
-          min_best_1[i] = min_linear_100;
+          min_best_1 = min_linear_100;
+          
         }
       }
-
+Serial.print("min_linear_100");
+      Serial.println(d11_best);
 
       //store data and save for next cycle
-      best_d11[i] = d11_best;
-      best_d12[i] = d12_best;
-      float d1[] = {d11_best,d12_best};
+      //best_d11[i] = d11_best;
+      //best_d12[i] = d12_best;
+      float d1[] = {};
+      d1[address-1] = d11_best;
+      d1[address_aux-1] = d12_best;
 
 
       //compute average with available knowledge
-      d1_av[0] = (d1[0] + d2_copy[0])/2;
-      d1_av[1] = (d1[1] + d2_copy[1])/2;
+      d1_av[0] = (d1[0] + d_copy[0])/2;
+      d1_av[1] = (d1[1] + d_copy[1])/2;
       //update local lagrangian
        y1[0] = y1[0] + rho*(d1[0]-d1_av[0]);
       y1[1] = y1[1] + rho*(d1[1]-d1_av[1]);
       //send node 1 solution to neighboors
        //d1_copy = d1;
        //dunno if this works
-       d1_copy[0] = d1[0];
-       d1_copy[1] = d1[1];
-  }
+       d_copy[0] = d1[0];
+       d_copy[1] = d1[1];
+       //mensagem a enviar é o d1_copy cada um dos nós processará de forma diferente
+       buffer[0] = '%';
+       buffer[1] = d1[0];
+       buffer[2] = d1[1];
+       buffer[3] = 0;
+       //set's up the mensage to send to the other node
+       Serial.println(d1[0]);
+       Serial.println(d1[1]);
+       delay(10000);
+       transmit(buffer,address_aux);
+       
   
 }
 
