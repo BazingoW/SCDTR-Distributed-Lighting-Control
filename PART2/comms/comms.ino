@@ -9,6 +9,11 @@
 
 float kself, kmutuo;
 int ledpin = 9;
+int raspberry_add = 100;
+float luxs = 3;
+int estado = 1;
+float ref = 20.0;
+
 
 int pin_verif = 2;
 int address, address_aux;
@@ -18,6 +23,10 @@ bool on=0;
 float ext_illum = 0;
 float min_best[n_iter];
 byte buffer[3] ;
+
+
+//vetor de chars recebidos
+char inData[10] = "";
 
 
 //System
@@ -110,12 +119,26 @@ if(flag==1)
   Wire.endTransmission();    // stop transmitting
   Serial.println("SentData");
   calibrar1();
+
+  // start the consensus from the address 1
+  if (address == 1)
+  {
+    Serial.println("please w8 a few seconds for the consensus to be operational");
+    iteracao();
+  }
+  
   on=1;
 
 }
 else if(flag==2)
 {
   calibrar1();
+  // start the consensus from the address 1
+  if (address == 1)
+  {
+    Serial.println("please w8 a few seconds for the consensus to be operational");
+    iteracao();
+  }
   on=1;
 }
 flag=0;
@@ -126,13 +149,90 @@ if(on)
 {
   //Main Loop
   // insert in 
-  if (address == 1)
-  {
-    Serial.println("please w8 a few seconds for the consensus to be operational");
-    iteracao();
-  }
   //transmit(buffer,address_aux);
- // delay(1000);
+  delay(1000);
+ 
+  switch(flag)
+  {
+    case 3:
+    {
+      Serial.println("data info");
+      
+      if (inData[2] == 200)
+        inData[2] = 0;
+      if (inData[4] == 200)
+        inData[4] = 0;
+      d_copy[0] = int(inData[1])+ int(inData[2])/100;
+      d_copy[1] = int(inData[3])+ int(inData[4])/100;
+      Serial.println("valores de d da iteração anterior");
+      Serial.println(d_copy[0]);
+      Serial.println(d_copy[1]);
+      iteracao();
+      flag = 0;
+    }
+    case 4:
+    {
+      switch(inData[1])
+      {
+        //measured luminance
+        case 'l':
+        {
+          luxs = calc_luxs(analogRead(analogPin));
+          buffer[2] = luxs;
+          buffer[3] = 0;//parece fixe por um 0 no fim pq acaba a leitura NULL
+          break;
+          
+        }
+        case 'd':
+        {
+          buffer[2] = d_copy[address-1];
+          buffer[3] = 0;
+          break;
+        }
+        case 'o':
+        {
+          buffer[2] = estado;
+          buffer[3] = 0;
+          break;
+        }
+        case 'L':
+        {
+          buffer[2] = ref;
+          buffer[3] = 0;
+          break;
+        }
+        case 'O':
+        {
+          buffer[2] = o1;
+          buffer[3] = 0;
+          break;
+        }
+        case 'r':
+        {
+          buffer[2] = ref;
+          buffer[3] = 0;
+          break;
+        }
+         case 'p':
+        {
+          buffer[2] = d1[address-1]/255;
+          buffer[3] = 0;
+          break;
+        }
+         case 'e':// para isto temos de guardar a media por segundo do led o mesmo para o de cima
+        {
+          buffer[2] = d1[address-1];
+          buffer[3] = 0;
+          break;
+        }
+
+
+
+
+        
+      }
+    }
+  }
 }
 }
 
@@ -176,7 +276,7 @@ void calibrar()
 
   Serial.println(calc_luxs(analogRead(analogPin)));
   
-  if(address == 2)
+  if( address == 2)
   {
     digitalWrite(ledpin, HIGH);
   }
@@ -202,9 +302,6 @@ int index = 0;
 //string de data recebida
 String input;
 
-//vetor de chars recebidos
-char inData[10] = "";
-
   while (Wire.available()>0) { // loop through all but the last
 
         inData[index] =  Wire.read(); //Read a character
@@ -215,6 +312,7 @@ char inData[10] = "";
    }
    Serial.println("ReceivedData");
    Serial.println(inData);
+   //Serial.println(index);
  //  Serial.println(size(howMany))
 
 if(inData[0]=='O')
@@ -225,14 +323,15 @@ if(inData[0]=='O')
     {
      flag=2;
     }
+   // significa que o consensus do outro nó acabou e que este device deverá ser os novos comandos e calcular novos valores
    else if(inData[0]== '%')
+   { 
+      flag = 3; 
+   }
+   // significa que este arduino deverá enviar informação para o raspberry 
+   else if(inData[0]== '#')
    {
-      Serial.println(int(inData[1]));
-      Serial.println(int(inData[2]));
-      d_copy[0] = int(inData[1]);
-      d_copy[1] = int(inData[2]);
-      iteracao();
-      
+      flag = 4;
    }
 }
 
@@ -310,7 +409,7 @@ void iteracao()
 {
   
   float z11,z12;
-  float min_unconstrained = 0;
+  float mini=0;
   
     //node 1
     float d11_best = -1;
@@ -320,12 +419,38 @@ void iteracao()
     
     float sol_unconstrained = 1, sol_boundary_linear = 1, sol_boundary_0 = 1, sol_boundary_100 = 1;
     float sol_linear_0 = 1, sol_linear_100 = 1;
-    
-  
+    /*
+     if(address == 2)
+       {
+//        node2_change(y[1],y[0]);
+        float temp;
+        temp = y1[0];
+        y1[0] = y1[1];
+        y1[1] = temp;
+        
+        temp = d1_av[0];
+        d1_av[0] = d1_av[1];
+        d1_av[1] = temp;
+        
+  //      node2_change(d1_av[1],d1_av[0]);
+       }
+*/
+
+/*
+    Serial.print(d1_av[0]);
+    Serial.print("      ");
+    Serial.println(d1_av[1]);
+
+    Serial.print(y1[0]);
+    Serial.print("      ");
+    Serial.println(y1[1]);*/
     z11 = -c1 - y1[0] + rho*d1_av[0];
     z12 = -y1[1] +  rho*d1_av[1];
-    
-  
+    /*
+    Serial.print(z11);
+    Serial.print("      ");
+    Serial.println(z12);
+  */
     float u1 = o1-L1;
     float u2 = 0;
     float u3 = 100;
@@ -340,8 +465,8 @@ void iteracao()
     
 
     //compute unconstrained minimum
-    int d11u = p11*z11;
-    int d12u = p12*z12;
+    float d11u = p11*z11;
+    float d12u = p12*z12;
    
     //guardar valores
     float best_d11[50];
@@ -362,26 +487,29 @@ void iteracao()
     {
       sol_unconstrained = 0;
     }
-
+    
 
     //compute function value and if best store new optimum
     if(sol_unconstrained)
     {
-     min_unconstrained = 0.5*q1*sq(d11u) + c1*d11u + y1[0]*(d11u-d1_av[0]) + y1[1]*(d12u-d1_av[1]) + rho/2*sq(d11u - d1_av[0]) + rho/2*sq(d12u-d1_av[1]);
+     mini = 0.5*q1*sq(d11u) + c1*d11u + y1[0]*(d11u-d1_av[0]) + y1[1]*(d12u-d1_av[1]) + rho/2*sq(d11u - d1_av[0]) + rho/2*sq(d12u-d1_av[1]);
 
-      if(min_unconstrained < min_best_1)
+      if(mini < min_best_1)
       {
         d11_best = d11u;
         d12_best = d12u;
-        min_best_1= min_unconstrained;
+        min_best_1= mini;
       }
     }
-      Serial.print("unconstrained");
+    /*
+      Serial.print("unconstrained value : ");
+      Serial.print(mini);
       Serial.println(d11_best);
+      */
     
       //compute minimum constrained to linear boundary
-      int d11bl = p11*z11+p11*k11/n*(w1-u1);
-      int d12bl = p12*z12+p12*k12/n*(w1-u1);
+      float d11bl = p11*z11+p11*k11/n*(w1-u1);
+      float d12bl = p12*z12+p12*k12/n*(w1-u1);
   
 
       //check feasibility of minimum constrained to linear boundary
@@ -400,25 +528,26 @@ void iteracao()
       //compute function value and if best store new optimum
       if(sol_boundary_linear)
       {
-        float min_boundary_linear = 0.5*q1*sq(d11bl) + c1*d11bl + y1[0]*(d11bl-d1_av[0]) + y1[1]*(d12bl-d1_av[1]) + rho/2*sq(d11bl-d1_av[0]) + rho/2*sq(d12bl-d1_av[1]);
+        mini = 0.5*q1*sq(d11bl) + c1*d11bl + y1[0]*(d11bl-d1_av[0]) + y1[1]*(d12bl-d1_av[1]) + rho/2*sq(d11bl-d1_av[0]) + rho/2*sq(d12bl-d1_av[1]);
 
         
         
 
-        if(min_boundary_linear < min_best_1)
+        if(mini < min_best_1)
         {
           d11_best = d11bl;
           d12_best = d12bl;
-          min_best_1 = min_boundary_linear;
+          min_best_1 = mini;
         }
       }
         
-      Serial.print("boundary_linear: ");
-      Serial.println(d11_best);
+     // Serial.print("boundary_linear: ");
+    //  Serial.print(mini);
+      //Serial.println(d11_best);
 
       //compute minimum constrained to boundary
-      int d11b0 = 0;
-      int d12b0 = p12*z12;
+      float d11b0 = 0;
+      float d12b0 = p12*z12;
       
 
       //check feasibility of minimum constrained to 0 boundary
@@ -436,22 +565,23 @@ void iteracao()
       //compute function value and if the best store new optimum
       if(sol_boundary_0)
       {
-        float min_boundary_0 = 0.5*q1*sq(d11b0) + c1*d11b0 + y1[0]*(d11b0-d1_av[0]) + y1[1]*(d12b0-d1_av[2]) + rho/2*sq(d11b0-d1_av[0]) + rho/2*sq(d12b0-d1_av[1]);
-
-        if(min_boundary_0 < min_best_1)
+        mini = 0.5*q1*sq(d11b0) + c1*d11b0 + y1[0]*(d11b0-d1_av[0]) + y1[1]*(d12b0-d1_av[2]) + rho/2*sq(d11b0-d1_av[0]) + rho/2*sq(d12b0-d1_av[1]);
+      
+        if(mini < min_best_1)
         {
           d11_best = d11b0;
           d12_best = d12b0;
-          min_best_1 = min_boundary_0;
+          min_best_1 = mini;
         }
       }
 
-      Serial.print("min_boundary: ");
-      Serial.println(d11_best);
+      //Serial.print("min_boundary: ");
+     // Serial.print(mini);
+     // Serial.println(d11_best);
 
       //compute minimum constrained to 100 boundary
-      int d11b100 = 100;
-      int d12b100 = p12*z12;
+      float d11b100 = 100;
+      float d12b100 = p12*z12;
 
       //check feasibility of minimum constrained to 100 boundary
       if(d11b0 < 0)
@@ -467,18 +597,19 @@ void iteracao()
       //compute function value and if best store new optimum
       if(sol_boundary_100)
       {
-        float min_boundary_100 = 0.5*q1*sq(d11b100) + c1*d11b100 + y1[0]*(d11b100-d1_av[0]) + y1[1]*(d12b100-d1_av[1]) + rho/2*sq(d11b100-d1_av[0]) + rho/2*sq(d12b100-d1_av[1]);
+        mini = 0.5*q1*sq(d11b100) + c1*d11b100 + y1[0]*(d11b100-d1_av[0]) + y1[1]*(d12b100-d1_av[1]) + rho/2*sq(d11b100-d1_av[0]) + rho/2*sq(d12b100-d1_av[1]);
 
-        if(min_boundary_100 < min_best_1)
+        if(mini < min_best_1)
         {
           d11_best = d11b100;
           d12_best = d12b100;
-          min_best_1 = min_boundary_100;
+          min_best_1 = mini;
         }
       }
 
-      Serial.print("min_boundary100: ");
-      Serial.println(d11_best);
+      //Serial.print("min_boundary100: ");
+      //Serial.print(mini);
+      //Serial.println(d11_best);
 
       //compute minimum constrained to linear and zero boundary
       float common = (rho+q1)/((rho+q1)*n-k11*k11); //ou float?
@@ -507,20 +638,21 @@ void iteracao()
       //compute function value and if best store new optimum
       if(sol_linear_0)
       {
-        float min_linear_0 = 0.5*q1*sq(d11l0) + c1*d11l0 + y1[0]*(d11l0-d1_av[0]) + y1[1]*(d12l0-d1_av[1]) + rho/2*sq(d11l0-d1_av[0]) + rho/2*sq(d12l0-d1_av[1]);
-      Serial.print("valmin_linear_0: ");
-      Serial.println(min_linear_0);
-        if(min_linear_0 < min_best_1)
+        mini = 0.5*q1*sq(d11l0) + c1*d11l0 + y1[0]*(d11l0-d1_av[0]) + y1[1]*(d12l0-d1_av[1]) + rho/2*sq(d11l0-d1_av[0]) + rho/2*sq(d12l0-d1_av[1]);
+     // Serial.print("valmin_linear_0: ");
+      //Serial.println(mini);
+        if(mini < min_best_1)
         {
           d11_best = d11l0;
           d12_best = d12l0;
-          min_best_1 = min_linear_0;
+          min_best_1 = mini;
         }
         
       }
 
-      Serial.print("min_linear_0: ");
-      Serial.println(d11_best);
+      //Serial.print("min_linear_0: ");
+      //Serial.print(mini);
+      //Serial.println(d11_best);
 
       //compute minimum constrained to linear and 100 boundary
        common = (rho+q1)/((rho+q1)*n-k11*k11); //ou float?
@@ -546,27 +678,40 @@ void iteracao()
       //compute function value and if best store new optimum
       if(sol_linear_100)
       {
-       float  min_linear_100 = 0.5*q1*sq(d11l100) + c1*d11l100 + y1[0]*(d11l100-d1_av[0]) + y1[1]*(d12l100-d1_av[1]) + rho/2*sq(d11l100-d1_av[0]) + rho/2*sq(d12l100-d1_av[1]);
+       float  mini = 0.5*q1*sq(d11l100) + c1*d11l100 + y1[0]*(d11l100-d1_av[0]) + y1[1]*(d12l100-d1_av[1]) + rho/2*sq(d11l100-d1_av[0]) + rho/2*sq(d12l100-d1_av[1]);
 
-        if(min_linear_100 < min_best_1)
+        if(mini < min_best_1)
         {
           d11_best = d11u;
           d12_best = d12u;
-          min_best_1 = min_linear_100;
+          min_best_1 = mini;
           
         }
       }
-Serial.print("min_linear_100");
-      Serial.println(d11_best);
+//Serial.print("min_linear_100");
+//Serial.print(mini);
+  //    Serial.println(d11_best);
 
       //store data and save for next cycle
       //best_d11[i] = d11_best;
       //best_d12[i] = d12_best;
       float d1[] = {};
-      d1[address-1] = d11_best;
-      d1[address_aux-1] = d12_best;
+      d1[0] = d11_best;
+      d1[1] = d12_best;
+/*
+      if(address == 2)
+       {
+  //      node2_change(y[1],y[0]);
+//        node2_change(d1_av[1],d1_av[0]);
+        temp = y1[1];
+        y1[1] = y1[2];
+        y1[2] = temp;
+        
+        temp = d1_av[1];
+        d1_av[1] = d1_av[2];
+        d1_av[2] = temp;
 
-
+       }*/
       //compute average with available knowledge
       d1_av[0] = (d1[0] + d_copy[0])/2;
       d1_av[1] = (d1[1] + d_copy[1])/2;
@@ -576,16 +721,46 @@ Serial.print("min_linear_100");
       //send node 1 solution to neighboors
        //d1_copy = d1;
        //dunno if this works
+
+    //  Serial.print(y1[0]);
+     // Serial.print("  y1/2    ");
+      //Serial.println(y1[1]);
+      //Serial.print(d1_av[0]);
+      //Serial.print("  d1_av    ");
+      //Serial.println(d1_av[1]); 
+      
        d_copy[0] = d1[0];
        d_copy[1] = d1[1];
+
+       
        //mensagem a enviar é o d1_copy cada um dos nós processará de forma diferente
        buffer[0] = '%';
-       buffer[1] = d1[0];
-       buffer[2] = d1[1];
-       buffer[3] = 0;
+       //os valores de d1 vêem em float por isso o que vou fazer é transformar esse valor em dois bytes 16-> 65536 valor maximo transmitido
+       // o que vamos fazer aqui é usar os 5 digitos que temos para representar em que vamos ter 2 para parte inteira e 2 decimal
+       // a outra hipotese é usar 255 e usar apenas uma casa decimal mas acho mal não suficiente
+       buffer[1] = int(d1[1]);
+       buffer[2] = int((d1[1]-int(d1[1]))*100);
+       if(buffer[2]==0)
+       {
+          buffer[2] = 200;
+       }       
+       buffer[3] = int(d1[0]);
+       buffer[4] = int((d1[0]-int(d1[0]))*100);
+       if(buffer[4]==0)
+       {
+          buffer[4] =200;
+       }
+       buffer[5] = 0;
        //set's up the mensage to send to the other node
+       Serial.println("data calculate, results presented below: will take 3-4s to reach other device informations that follows is whole value, int part decimal part");
+       Serial.println("self");
        Serial.println(d1[0]);
+       Serial.println(buffer[1]);
+       Serial.println(buffer[2]);
+       Serial.println("other");
        Serial.println(d1[1]);
+       Serial.println(buffer[3]);
+       Serial.println(buffer[4]);
        delay(10000);
        transmit(buffer,address_aux);
        
@@ -596,7 +771,7 @@ Serial.print("min_linear_100");
 void transmit(byte* message,int address_dest)
 {
   Wire.beginTransmission(address_dest); // transmit to device #8
-  Wire.write(message,3);        // sends five bytes
+  Wire.write(message,6);        // sends five bytes
   Wire.endTransmission();    // stop transmitting
   Serial.println("SentData");  
   
