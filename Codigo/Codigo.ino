@@ -271,14 +271,12 @@ float calc_luxs(int val)
   R2 = ((r1 * 5) / tensao) - r1;
 
   //uso de reta logaritmica para converter de R para lux
-  //luxs = ((log10(R2) - 4.8451) / -0.7186);
-  luxs = log10(R2) - 6 / (-0.5);
+  luxs = ((log10(R2) - 4.8451) / -0.7186);
+  //luxs = log10(R2) - 6 / (-0.5);
   luxs = pow(10, luxs);
 
-  Serial.println(R2);
-  delay(1000);
 
-  return luxs;
+  return 20*luxs;
 }
 
 //preenche look up table
@@ -407,7 +405,7 @@ usat=u;
 
   //procura valor na lookup table
   // pwm = search (u);
-  pwm = declive * u ;
+  pwm = declive * usat ;
   
 /*
   //write to pin pwm, if feedforward is on add that as well
@@ -421,7 +419,7 @@ usat=u;
   if (FFD == true)
     //analogWrite(led, search(reference + u));
 { 
-  pwm = declive * (reference + u);
+  pwm = declive * (reference + usat);
 }  
 
 if(pwm <0)
