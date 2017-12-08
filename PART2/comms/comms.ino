@@ -47,7 +47,7 @@ char inData[10] = "";
 
 //System
 float k11 = 0.67, k12 = 0.18, k21 = 0.01, k22 = 0.04;
-float L1 = 30, o1 = 0, L2 = 1, o2 = 0;
+float L1 = 30, o1 = 0, L2 = 30, o2 = 0;
 float K[][2] = {{k11, k12},{k21, k22}};
 float L[][1] = {{L1}, {L2}};
 float o[][1] = {{o1},{o2}};
@@ -344,7 +344,9 @@ float calc_luxs(int val)
   luxs = ((log10(R2) - 4.8451) / -0.7186);
   //luxs = ((log10(R2) - 4.5533) / -3.1576);
   luxs = pow(10, luxs);
-
+  if(address == 2)
+    return 17*luxs;
+    
   return luxs;
 }
 
@@ -401,8 +403,8 @@ String input;
       
     
    }
-   Serial.println("ReceivedData");
-   Serial.println(inData);
+   //Serial.println("ReceivedData");
+   //Serial.println(inData);
    //Serial.println(index);
  //  Serial.println(size(howMany))
 
@@ -505,8 +507,8 @@ void calibrar1()
   
    Serial.println(kself);
    Serial.println(kmutuo);
-  // k11 = kself;
-   //k12 = kmutuo;
+   k11 = kself;
+   k12 = kmutuo;
    
   
 }
@@ -885,7 +887,7 @@ void transmit(byte* message,int address_dest)
   Wire.beginTransmission(address_dest); // transmit to device #8
   Wire.write(message,6);        // sends five bytes
   Wire.endTransmission();    // stop transmitting
-  Serial.println("SentData");  
+  //Serial.println("SentData");  
   
 }
 
@@ -953,7 +955,7 @@ void recta_luxs()
   Serial.print(' ');
   Serial.println(200); */
   declive = 200/luxs;
-  Serial.println(declive);
+  //Serial.println(declive);
   delay(1000);
 
    
@@ -1068,10 +1070,10 @@ analogWrite(ledpin,pwm);
 
   
  //prints pedidos pelo prof
-  Serial.print(reference);
-  Serial.print(" ; ");
-  Serial.print(average());
-  Serial.print(" ; ");
+  //Serial.print(reference);
+ // Serial.print(" ; ");
+  Serial.println(average());
+ // Serial.print(" ; ");
   /*//if (FFD == true)
    // Serial.print(((search(reference+u))/255)* 100);
     //Serial.print(((declive*(reference+u))/255)* 100);
@@ -1081,8 +1083,8 @@ analogWrite(ledpin,pwm);
   Serial.println(u);*/
 
 
-  Serial.print("pwmvalue : ");
-  Serial.println(pwm);
+  //Serial.print("pwmvalue : ");
+  //Serial.println(pwm);
 }
 
 

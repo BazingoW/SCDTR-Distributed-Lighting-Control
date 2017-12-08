@@ -271,14 +271,12 @@ float calc_luxs(int val)
   R2 = ((r1 * 5) / tensao) - r1;
 
   //uso de reta logaritmica para converter de R para lux
-  //luxs = ((log10(R2) - 4.8451) / -0.7186);
-  luxs = log10(R2) - 6 / (-0.5);
+  luxs = ((log10(R2) - 4.8451) / -0.7186);
+  //luxs = log10(R2) - 6 / (-0.5);
   luxs = pow(10, luxs);
 
-  Serial.println(R2);
-  delay(1000);
 
-  return luxs;
+  return 20*luxs;
 }
 
 //preenche look up table
