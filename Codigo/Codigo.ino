@@ -407,7 +407,7 @@ usat=u;
 
   //procura valor na lookup table
   // pwm = search (u);
-  pwm = declive * u ;
+  pwm = declive * usat ;
   
 /*
   //write to pin pwm, if feedforward is on add that as well
@@ -421,7 +421,7 @@ usat=u;
   if (FFD == true)
     //analogWrite(led, search(reference + u));
 { 
-  pwm = declive * (reference + u);
+  pwm = declive * (reference + usat);
 }  
 
 if(pwm <0)

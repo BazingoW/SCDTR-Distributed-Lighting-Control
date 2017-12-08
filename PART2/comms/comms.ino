@@ -2,10 +2,22 @@
 
 #define analogPin 1
 #define n_iter 25
+#define tamluxs 7
+
 
 //Resistencia do circuito do LDR
 #define r1 10000.0
 #define rh 0.01
+
+long int lastMeasure = 0;
+//ultimos 5 valores de luxs
+float last_luxs[tamluxs];
+unsigned long sampInterval = 10000; //10 milisecs
+
+float declive = 0;
+
+float K1, K2, Kp = 0.1, Ki = 38, b = 0.5, y, e , p, u, y_ant = 0, i_ant = 0, e_ant = 0, integ=0;
+
 
 float kself, kmutuo;
 int ledpin = 9;
@@ -15,6 +27,7 @@ int estado = 1;
 float ref = 20.0;
 //valor que se se encontrar a 1 quer dizer que não é preciso enviar a mesnagem para o rapberry
 int central = 0;
+int arduinos[1];
 
 
 int pin_verif = 2;
@@ -25,7 +38,7 @@ bool on=0;
 float ext_illum = 0;
 float min_best[n_iter];
 byte buffer[3] ;
-byte serverMSG[];
+byte serverMSG[4];
 
 
 //vetor de chars recebidos
@@ -33,8 +46,8 @@ char inData[10] = "";
 
 
 //System
-float k11 = 2, k12 = 1, k21 = 1, k22 = 2;
-float L1 = 150, o1 = 30, L2 = 80, o2 = 0;
+float k11 = 0.67, k12 = 0.18, k21 = 0.01, k22 = 0.04;
+float L1 = 30, o1 = 0, L2 = 1, o2 = 0;
 float K[][2] = {{k11, k12},{k21, k22}};
 float L[][1] = {{L1}, {L2}};
 float o[][1] = {{o1},{o2}};
@@ -42,11 +55,11 @@ float o[][1] = {{o1},{o2}};
 //Cost function
 float c1 = 1, c2 = 1;
 float c[] = {c1, c2};
-float q1 = 0.0, q2 = 0.0;
+float q1 = 1.0, q2 = 1.0;
 float Q[][2]={{q1, 0},{0, q2}};
 
    //Consensus variables
-  float rho = 0.01;
+  float rho = 0.15;
   //node 1
   float d1[] = {0,0};
   float d1_av[] = {0,0};
@@ -63,11 +76,12 @@ float Q[][2]={{q1, 0},{0, q2}};
 
 
 void setup() {
+Serial.begin(250000);           // start serial for output
 
   // define os endereços do arduino segundo o estado do pin
   // define initial message to send to other arduinos 
 
-
+  
   //esta linha passa a ser desnecessaria pois os valores dos k,L e o vão ser lidos/definidos
   if(digitalRead(pin_verif) == HIGH)
   {
@@ -83,29 +97,36 @@ void setup() {
     address = 1;
     address_aux = 2;
   }
+  
+  K1 = Kp * b;
+  K2 = Kp * Ki * sampInterval / 2000000;
+  
+  recta_luxs();
   // formato da mensagem será '#-address-mensagetosend'it is currently used 1 byte per item, the mensage to send can be changed to type of data -value, or if it is knowned only the values 
   //aquando de receber a mesagem tranformar o valor de byte em inteiro  int(buffer[2])
-  buffer[0] = '#';
+  buffer[0] = '%';
   buffer[1] = '0'+address;
   buffer[2] = 123;
-
+  
 
 
   
   
   Wire.begin(address); // join i2c bus (address optional for master)
   Wire.onReceive(receiveEvent); // register event
-  Serial.begin(19200);           // start serial for output
-
   
   
   Wire.beginTransmission(address_aux); // transmit to device
   Wire.write("O");       
   Wire.endTransmission();    // stop transmitting
-  Serial.println("SentData");
+  //Serial.println("SentData");
   //example of how it should be read the message
-   Serial.println(int(buffer[2]));
-
+   //Serial.println(int(buffer[2]));
+  for (int i=1;i<15;i++)
+  {
+    delay(35);
+      shift_left(calc_luxs( analogRead(analogPin)));
+  }
 }
 
 
@@ -127,10 +148,11 @@ if(flag==1)
   if (address == 1)
   {
     Serial.println("please w8 a few seconds for the consensus to be operational");
-    //iteracao();
+    iteracao();
   }
   
   on=1;
+  flag=0;
 
 }
 else if(flag==2)
@@ -140,27 +162,30 @@ else if(flag==2)
   if (address == 1)
   {
     Serial.println("please w8 a few seconds for the consensus to be operational");
-   // iteracao();
+    iteracao();
+     //define tempo qd controlo acaba
+    //unsigned long endTime = micros();
   }
   on=1;
+  flag=0;
 }
-flag=0;
 }
 
 
 if(on)
 {
+  unsigned long startTime = micros();
   //Main Loop
   // insert in 
   //transmit(buffer,address_aux);
-  delay(1000);
-  SerialInputs();
- 
+  
+  //SerialInputs();
+  //define start time
   switch(flag)
   {
     case 3:
     {
-      Serial.println("data info");
+     // Serial.println("data info");
       
       if (inData[2] == 200)
         inData[2] = 0;
@@ -168,11 +193,17 @@ if(on)
         inData[4] = 0;
       d_copy[0] = int(inData[1])+ int(inData[2])/100;
       d_copy[1] = int(inData[3])+ int(inData[4])/100;
-      Serial.println("valores de d da iteração anterior");
-      Serial.println(d_copy[0]);
-      Serial.println(d_copy[1]);
+     // Serial.println("valores de d da iteração anterior");
+      //Serial.println(int(inData[1]));
+     // Serial.println(float(int(inData[2])/100));
+      //Serial.println(int(inData[1]));
+      //Serial.println(int(inData[4])/100);
       iteracao();
+      startTime = micros();
+      controlo(L1);   
+      
       flag = 0;
+
     }
     case 4:
     {
@@ -193,7 +224,7 @@ if(on)
         {
           serverMSG[2] = 'd';
           serverMSG[3] = int(d_copy[address-1]);
-          serverMSG[4] = int((d_copy[address-1]-int(d_copy[address-1]))*100)
+          serverMSG[4] = int((d_copy[address-1]-int(d_copy[address-1]))*100);
           serverMSG[5] = 0;
           break;
         }
@@ -238,7 +269,7 @@ if(on)
 
           if(inData[2]>'0')
           {
-            transmit3(serverMSG,inData[2]);
+            transmit(serverMSG,inData[2]);
             central = 1;
           }
           break;
@@ -251,7 +282,7 @@ if(on)
           serverMSG[3] = 0;
           if(inData[2]>'0')
           {
-            transmit3(serverMSG,inData[2]);
+            transmit(serverMSG,inData[2]);
             central = 1;
           }
           break;
@@ -263,7 +294,7 @@ if(on)
           serverMSG[4] = 0;
           if(inData[2]>'0')
           {
-            transmit3(serverMSG,inData[2]);
+            transmit(serverMSG,inData[2]);
             central = 1;
           }
           break;
@@ -275,25 +306,24 @@ if(on)
           serverMSG[4] = 0;
           if(inData[2]>'0')
           {
-            transmit3(serverMSG,inData[2]);
+            transmit(serverMSG,inData[2]);
             central = 1;
           }
           break;
          }
          case 's':
          {
-          estado = inData[2]
+          estado = inData[2];
          }
          //falta por aqui as variaveis de stream e essas coisas
          
-
-
-
-
         
       }
     }
   }
+  unsigned long endTime = micros();
+//espera o tempo necessario para passar 1 sampling interval
+  delayMicroseconds(sampInterval - (endTime - startTime));
 }
 }
 
@@ -388,6 +418,7 @@ if(inData[0]=='O')
    else if(inData[0]== '%')
    { 
       flag = 3; 
+      Serial.print(flag);
    }
    // significa que este arduino deverá enviar informação para o raspberry 
    else if(inData[0]== '#')
@@ -412,7 +443,7 @@ void calibrar1()
    
     if(address == 1)
   {
-    analogWrite(ledpin, 100);
+    analogWrite(ledpin, 255);
   }
   else
   {
@@ -424,6 +455,7 @@ void calibrar1()
   if(address == 1)
   {
     kself = (calc_luxs(analogRead(analogPin)))/100.0;
+    Serial.print("valor de luxs calculado: ");
     Serial.println(calc_luxs(analogRead(analogPin)));
     Serial.println(analogRead(analogPin));
     
@@ -431,7 +463,7 @@ void calibrar1()
   else
   {
     kmutuo = (calc_luxs(analogRead(analogPin)))/100.0;
-    
+    Serial.print("valor de luxs calculado: ");
     Serial.println(calc_luxs(analogRead(analogPin)));
     Serial.println(analogRead(analogPin));
     
@@ -441,7 +473,7 @@ void calibrar1()
   
   if(address == 2)
   {
-    analogWrite(ledpin, 100);
+    analogWrite(ledpin, 255);
   }
   else
   {
@@ -453,7 +485,7 @@ void calibrar1()
   if(address == 2)
   {
     kself = (calc_luxs(analogRead(analogPin)))/100.0;
-    
+    Serial.print("valor de luxs calculado: ");
     Serial.println(calc_luxs(analogRead(analogPin)));
     Serial.println(analogRead(analogPin));
     
@@ -461,8 +493,10 @@ void calibrar1()
   else
   {
     kmutuo = (calc_luxs(analogRead(analogPin)))/100.0;
+    Serial.print("valor de luxs calculado: ");
     Serial.println(calc_luxs(analogRead(analogPin)));
     Serial.println(analogRead(analogPin));
+    
   }
  
   delay(500);
@@ -471,6 +505,8 @@ void calibrar1()
   
    Serial.println(kself);
    Serial.println(kmutuo);
+  // k11 = kself;
+   //k12 = kmutuo;
    
   
 }
@@ -823,17 +859,22 @@ void iteracao()
        }
        buffer[5] = 0;
        //set's up the mensage to send to the other node
-       Serial.println("data calculate, results presented below: will take 3-4s to reach other device informations that follows is whole value, int part decimal part");
-       Serial.println("self");
-       Serial.println(d1[0]);
-       Serial.println(buffer[1]);
-       Serial.println(buffer[2]);
-       Serial.println("other");
-       Serial.println(d1[1]);
-       Serial.println(buffer[3]);
-       Serial.println(buffer[4]);
-       delay(10000);
+      // Serial.println("data calculate, results presented below: will take 3-4s to reach other device informations that follows is whole value, int part decimal part");
+      // Serial.println("self");
+       //Serial.println(d1[0]);
+      // Serial.println(buffer[1]);
+       //Serial.println(buffer[2]);
+     //  Serial.println("other");
+      // Serial.println(d1[1]);
+      // Serial.println(buffer[3]);
+      // Serial.println(buffer[4]);
+       //analogWrite(ledpin, d1[0]);
+      // Serial.print("leitura de luxs actuais     ");
+      // Serial.println(calc_luxs(analogRead(analogPin)));
+       //delay(200);
        transmit(buffer,address_aux);
+       
+       
        
   
 }
@@ -889,15 +930,159 @@ char rpiData[10] = "";
        {
         buffer[2] = address;
         buffer[3] = 0;
-        for(int i=0;length(arduinos);i++)
+        for(int i=0;/*length(arduinos)*/5;i++)
         {
-          transmit(buffer,arduinos(i));  
+          transmit(buffer,arduinos[i]);  
         }
       }else
       transmit(buffer,rpiData[2]);
       
     }
   }
+}
+
+
+void recta_luxs()
+{
+  analogWrite(ledpin,200);
+
+  delay(1000);
+  float luxs = 0;
+  luxs =  calc_luxs(analogRead(analogPin));
+  /*Serial.print(calc_luxs(analogRead(analogPin)));
+  Serial.print(' ');
+  Serial.println(200); */
+  declive = 200/luxs;
+  Serial.println(declive);
+  delay(1000);
+
+   
+}
+
+void shift_left(float current_luxs)
+{  
+  last_luxs[lastMeasure % tamluxs] = current_luxs;
+  lastMeasure++;
+}
+
+
+
+//função que calcula a média dos luxs
+float average()
+{
+  float somatodos = 0;
+  int i;
+
+  //soma todos os valores
+  for (i = 0; i < tamluxs; i++)
+  {
+    somatodos += last_luxs[i];
+  }
+  
+  //retorna a média
+  return somatodos / tamluxs;
+}
+
+//funcao onde e controlado a luminosidade do led atraves de feedforward e feedback (com antiwindup)
+void controlo(float reference)
+{
+  float usat = 0;
+  float wind;
+  float  pwm;
+  
+  //lê pino e obtem luxs  
+  shift_left(calc_luxs( analogRead(analogPin)));
+
+
+  //faz a media dos ultimos lux
+  y = average();
+
+  //calcula erro em relacao a referencia ilum_min
+  e = reference - y;
+
+  //obtem parte proporcional
+  p = K1 * reference - Kp * y;
+
+  //obtem parte integral
+  integ = i_ant + K2 * (e + e_ant);
+
+//descobre valor led
+  u = p + integ;
+
+//parte do windud
+usat=u;
+/*
+  if (u > lookUp[255])
+  {
+    usat = lookUp[255];
+  }else if (u< lookUp[0])
+  {
+    
+    usat = lookUp[0];
+  }*/
+    if (u > 255/declive)
+  {
+    usat = 255/declive;
+  }else if (u< 0)
+  {
+    
+    usat = 0;
+  }
+
+  
+
+  //apenas e diferentde de 0 se estiver saturado
+  wind = usat - u;
+
+  //adicionar a proxima iteracao integradora o anti windup para o sistema nao integrar bue
+  integ += wind*K2*1.5;
+
+  //procura valor na lookup table
+  // pwm = search (u);
+ // pwm = declive * u ;
+  
+/*
+  //write to pin pwm, if feedforward is on add that as well
+  if (FFD == true)
+    //analogWrite(led, search(reference + u));
+    analogWrite(led, declive * (reference + u));
+  else
+    analogWrite(led, pwm);*/
+
+//write to pin pwm, if feedforward is on add that as well
+
+  pwm = (declive * u)+ d1[0]*255/100;
+
+if(pwm <0)
+    pwm = 0;
+if(pwm > 255)
+    pwm = 255;
+
+analogWrite(ledpin,pwm);
+
+
+  //faz set das variaveis para o proximo loop
+  y_ant = y;
+  i_ant = integ;
+  e_ant = e;
+
+  
+ //prints pedidos pelo prof
+  Serial.print(reference);
+  Serial.print(" ; ");
+  Serial.print(average());
+  Serial.print(" ; ");
+  /*//if (FFD == true)
+   // Serial.print(((search(reference+u))/255)* 100);
+    //Serial.print(((declive*(reference+u))/255)* 100);
+  //else
+    Serial.print((pwm/255)* 100);
+  Serial.println(" %");
+  Serial.println(u);*/
+
+
+  Serial.print("pwmvalue : ");
+  Serial.println(pwm);
 }
 
 
