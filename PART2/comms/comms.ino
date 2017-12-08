@@ -13,6 +13,8 @@ int raspberry_add = 100;
 float luxs = 3;
 int estado = 1;
 float ref = 20.0;
+//valor que se se encontrar a 1 quer dizer que não é preciso enviar a mesnagem para o rapberry
+int central = 0;
 
 
 int pin_verif = 2;
@@ -23,6 +25,7 @@ bool on=0;
 float ext_illum = 0;
 float min_best[n_iter];
 byte buffer[3] ;
+byte serverMSG[];
 
 
 //vetor de chars recebidos
@@ -65,7 +68,7 @@ void setup() {
   // define initial message to send to other arduinos 
 
 
-  
+  //esta linha passa a ser desnecessaria pois os valores dos k,L e o vão ser lidos/definidos
   if(digitalRead(pin_verif) == HIGH)
   {
     address = 2;
@@ -124,7 +127,7 @@ if(flag==1)
   if (address == 1)
   {
     Serial.println("please w8 a few seconds for the consensus to be operational");
-    iteracao();
+    //iteracao();
   }
   
   on=1;
@@ -137,7 +140,7 @@ else if(flag==2)
   if (address == 1)
   {
     Serial.println("please w8 a few seconds for the consensus to be operational");
-    iteracao();
+   // iteracao();
   }
   on=1;
 }
@@ -151,6 +154,7 @@ if(on)
   // insert in 
   //transmit(buffer,address_aux);
   delay(1000);
+  SerialInputs();
  
   switch(flag)
   {
@@ -178,53 +182,110 @@ if(on)
         case 'l':
         {
           luxs = calc_luxs(analogRead(analogPin));
-          buffer[2] = luxs;
-          buffer[3] = 0;//parece fixe por um 0 no fim pq acaba a leitura NULL
+          serverMSG[2] = '1';
+          serverMSG[3] = luxs;
+          serverMSG[4] = 0;//parece fixe por um 0 no fim pq acaba a leitura NULL
           break;
           
         }
+        //duty cycle in percentage
         case 'd':
         {
-          buffer[2] = d_copy[address-1];
-          buffer[3] = 0;
+          serverMSG[2] = 'd';
+          serverMSG[3] = int(d_copy[address-1]);
+          serverMSG[4] = int((d_copy[address-1]-int(d_copy[address-1]))*100)
+          serverMSG[5] = 0;
           break;
         }
+        //state occupied
         case 'o':
         {
-          buffer[2] = estado;
-          buffer[3] = 0;
+          serverMSG[2] = 'o';
+          serverMSG[3] = estado;
+          serverMSG[4] = 0;
           break;
         }
+        //lower bound not sure what this is
         case 'L':
         {
-          buffer[2] = ref;
-          buffer[3] = 0;
+          serverMSG[2] = 'L';
+          serverMSG[3] = ref;
+          serverMSG[4] = 0;
           break;
         }
+        // background illuminace
         case 'O':
         {
-          buffer[2] = o1;
-          buffer[3] = 0;
+          serverMSG[2] = 'O';
+          serverMSG[3] = o1;
+          serverMSG[4] = 0;
           break;
         }
+        //illuminace control referece
         case 'r':
         {
-          buffer[2] = ref;
-          buffer[3] = 0;
+          serverMSG[2] = 'L';
+          serverMSG[3] = ref;//d1[0]
+          serverMSG[4] = 0;
           break;
         }
+        // instantaneous power
          case 'p':
         {
-          buffer[2] = d1[address-1]/255;
-          buffer[3] = 0;
+          serverMSG[2] = 'p';
+          serverMSG[3] = d1[address-1]/255;
+          serverMSG[4] = 0;
+
+          if(inData[2]>'0')
+          {
+            transmit3(serverMSG,inData[2]);
+            central = 1;
+          }
           break;
         }
+        //
          case 'e':// para isto temos de guardar a media por segundo do led o mesmo para o de cima
         {
-          buffer[2] = d1[address-1];
-          buffer[3] = 0;
+          
+          serverMSG[2] = d1[address-1];
+          serverMSG[3] = 0;
+          if(inData[2]>'0')
+          {
+            transmit3(serverMSG,inData[2]);
+            central = 1;
+          }
           break;
         }
+         case 'c':
+         {
+          serverMSG[2] = 'c';
+          serverMSG[3] = d1[address-1]/255;
+          serverMSG[4] = 0;
+          if(inData[2]>'0')
+          {
+            transmit3(serverMSG,inData[2]);
+            central = 1;
+          }
+          break;
+         }
+         case 'v':
+         {
+          serverMSG[2] = 'v';
+          serverMSG[3] = d1[address-1]/255;
+          serverMSG[4] = 0;
+          if(inData[2]>'0')
+          {
+            transmit3(serverMSG,inData[2]);
+            central = 1;
+          }
+          break;
+         }
+         case 's':
+         {
+          estado = inData[2]
+         }
+         //falta por aqui as variaveis de stream e essas coisas
+         
 
 
 
@@ -250,8 +311,8 @@ float calc_luxs(int val)
   R2 = ((r1 * 5) / tensao) - r1;
 
   //uso de reta logaritmica para converter de R para lux
-  //luxs = ((log10(R2) - 4.8451) / -0.7186);
-  luxs = ((log10(R2) - 4.5533) / -3.1576);
+  luxs = ((log10(R2) - 4.8451) / -0.7186);
+  //luxs = ((log10(R2) - 4.5533) / -3.1576);
   luxs = pow(10, luxs);
 
   return luxs;
@@ -346,12 +407,12 @@ void calibrar1()
   
 
    delay(200);
-    analogWrite(ledpin, 0);
+   analogWrite(ledpin, 0);
    delay(200);
    
     if(address == 1)
   {
-    analogWrite(ledpin, 255);
+    analogWrite(ledpin, 100);
   }
   else
   {
@@ -362,12 +423,17 @@ void calibrar1()
  
   if(address == 1)
   {
-    kself = (calc_luxs(analogRead(analogPin)))/255.0;
+    kself = (calc_luxs(analogRead(analogPin)))/100.0;
+    Serial.println(calc_luxs(analogRead(analogPin)));
+    Serial.println(analogRead(analogPin));
     
   }
   else
   {
-    kmutuo = (calc_luxs(analogRead(analogPin)))/255.0;
+    kmutuo = (calc_luxs(analogRead(analogPin)))/100.0;
+    
+    Serial.println(calc_luxs(analogRead(analogPin)));
+    Serial.println(analogRead(analogPin));
     
   }
   
@@ -375,7 +441,7 @@ void calibrar1()
   
   if(address == 2)
   {
-    analogWrite(ledpin, 255);
+    analogWrite(ledpin, 100);
   }
   else
   {
@@ -386,12 +452,17 @@ void calibrar1()
     
   if(address == 2)
   {
-    kself = (calc_luxs(analogRead(analogPin)))/255.0;
+    kself = (calc_luxs(analogRead(analogPin)))/100.0;
+    
+    Serial.println(calc_luxs(analogRead(analogPin)));
+    Serial.println(analogRead(analogPin));
     
   }
   else
   {
-    kmutuo = (calc_luxs(analogRead(analogPin)))/255.0;
+    kmutuo = (calc_luxs(analogRead(analogPin)))/100.0;
+    Serial.println(calc_luxs(analogRead(analogPin)));
+    Serial.println(analogRead(analogPin));
   }
  
   delay(500);
@@ -734,7 +805,7 @@ void iteracao()
 
        
        //mensagem a enviar é o d1_copy cada um dos nós processará de forma diferente
-       buffer[0] = '%';
+       serverMSG[0] = '%';
        //os valores de d1 vêem em float por isso o que vou fazer é transformar esse valor em dois bytes 16-> 65536 valor maximo transmitido
        // o que vamos fazer aqui é usar os 5 digitos que temos para representar em que vamos ter 2 para parte inteira e 2 decimal
        // a outra hipotese é usar 255 e usar apenas uma casa decimal mas acho mal não suficiente
@@ -776,4 +847,59 @@ void transmit(byte* message,int address_dest)
   Serial.println("SentData");  
   
 }
+
+void SerialInputs()
+{
+
+int index = 0;
+
+//string de data recebida
+String input;
+
+//vetor de chars recebidos
+char rpiData[10] = "";
+
+  //se utilizador escreveu algo
+  if (Serial.available() > 0)
+  {
+    
+    //le o que o utilizador escreveu
+    while (Serial.available() > 0)
+    {
+     
+      if (index < 9) // One less than the size of the array
+      {
+        rpiData[index] =  Serial.read(); //Read a character
+        index++; // Increment where to write next
+        rpiData[index] = '\0'; // Null terminate the string
+      }
+
+    }
+
+    //converte vetor de chars em string
+    input = String(rpiData);
+    
+    //verrifica se utilizador quer mudar utilização da secretaria
+    if (rpiData[0] == 'g')
+    {
+       buffer[0] = '%';
+       buffer[1] = rpiData[1];
+       buffer[2] = 0;
+       if(rpiData[2]=='T')
+       {
+        buffer[2] = address;
+        buffer[3] = 0;
+        for(int i=0;length(arduinos);i++)
+        {
+          transmit(buffer,arduinos(i));  
+        }
+      }else
+      transmit(buffer,rpiData[2]);
+      
+    }
+  }
+}
+
+
+
 

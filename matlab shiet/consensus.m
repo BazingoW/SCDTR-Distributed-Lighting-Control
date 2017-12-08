@@ -5,7 +5,7 @@ K = [k11, k12 ; k21 , k22];
 L = [L1;L2]; o = [o1;o2];
 
 %The cost function
-c1 = 1; c2 = 1; q1 = 0.0; q2 = 0.0;
+c1 = 1; c2 = 1; q1 = 1.0; q2 = 1.0;
 c = [c1 c2]; Q = [q1 0; 0 q2];
 
 % SOLVE WITH CONSENSUS
@@ -23,7 +23,7 @@ d1_copy = [0;0];
 y2 = [0;0];
 k2 = [k21;k22]; 
 %iterations
-for i=1:50,
+for i=1:500,
    % node 1
    d11_best = -1;
    d12_best = -1;
@@ -174,7 +174,7 @@ for i=1:50,
    %update local lagrangian
    y1 = y1 + rho*(d1-d1_av);
    % send node 1 solution to neighboors
-   d1_copy = d1
+   d1_copy = d1;
    
    %%
    % node 2 
@@ -328,7 +328,7 @@ for i=1:50,
    % Update local lagrangian
    y2 = y2 + rho*(d2-d2_av);
    % send solution to neighbors
-   d2_copy = d2
+   d2_copy = d2;
    
    %save data for plots
    av1(i) = d1_av(1);
@@ -347,7 +347,7 @@ d_ = d2_av
 l_ = K*d_+o
 %Plots
 figure(10);
-plot(1:50, av1, 1:50, av2);
+plot(1:500, av1, 1:500, av2);
 legend('d_1','d_2');
 title('primal vars');
 xlabel('iter');
