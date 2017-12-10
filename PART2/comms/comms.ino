@@ -107,6 +107,8 @@ Serial.begin(250000);           // start serial for output
   buffer[0] = '%';
   buffer[1] = '0'+address;
   buffer[2] = 123;
+  serverMSG[0] = '%';
+  serverMSG[1] = '0'+address;
   
 
 
@@ -122,6 +124,8 @@ Serial.begin(250000);           // start serial for output
   //Serial.println("SentData");
   //example of how it should be read the message
    //Serial.println(int(buffer[2]));
+
+   //inicializar o vector que contem valores lidos pelos ldr
   for (int i=1;i<15;i++)
   {
     delay(35);
@@ -154,8 +158,7 @@ if(flag==1)
   on=1;
   flag=0;
 
-}
-else if(flag==2)
+}else if(flag==2)
 {
   calibrar1();
   // start the consensus from the address 1
@@ -169,18 +172,20 @@ else if(flag==2)
   on=1;
   flag=0;
 }
+
 }
 
 
 if(on)
 {
   unsigned long startTime = micros();
-  //Main Loop
-  // insert in 
   //transmit(buffer,address_aux);
+
+  //read messages that occur in the serial port
+  SerialInputs();
   
-  //SerialInputs();
   //define start time
+  // prob this is not the final example becuase we might need check the messages to send to the server and the consensus
   switch(flag)
   {
     case 3:
@@ -269,7 +274,7 @@ if(on)
 
           if(inData[2]>'0')
           {
-            transmit(serverMSG,inData[2]);
+            transmit(serverMSG,inData[2],5);
             central = 1;
           }
           break;
@@ -282,7 +287,7 @@ if(on)
           serverMSG[3] = 0;
           if(inData[2]>'0')
           {
-            transmit(serverMSG,inData[2]);
+            transmit(serverMSG,inData[2],4);
             central = 1;
           }
           break;
@@ -294,7 +299,7 @@ if(on)
           serverMSG[4] = 0;
           if(inData[2]>'0')
           {
-            transmit(serverMSG,inData[2]);
+            transmit(serverMSG,inData[2],5);
             central = 1;
           }
           break;
@@ -306,7 +311,7 @@ if(on)
           serverMSG[4] = 0;
           if(inData[2]>'0')
           {
-            transmit(serverMSG,inData[2]);
+            transmit(serverMSG,inData[2],5);
             central = 1;
           }
           break;
@@ -319,8 +324,12 @@ if(on)
          
         
       }
+      // confirmar o tamanho das coisas
+      //transmit(serverMSG,rasPi_address,);
     }
   }
+// confirmar o tamanho das coisas
+  //transmit(serverMSG,rasPi_address,);
   unsigned long endTime = micros();
 //espera o tempo necessario para passar 1 sampling interval
   delayMicroseconds(sampInterval - (endTime - startTime));
@@ -420,7 +429,6 @@ if(inData[0]=='O')
    else if(inData[0]== '%')
    { 
       flag = 3; 
-      Serial.print(flag);
    }
    // significa que este arduino deverá enviar informação para o raspberry 
    else if(inData[0]== '#')
@@ -843,7 +851,7 @@ void iteracao()
 
        
        //mensagem a enviar é o d1_copy cada um dos nós processará de forma diferente
-       serverMSG[0] = '%';
+       
        //os valores de d1 vêem em float por isso o que vou fazer é transformar esse valor em dois bytes 16-> 65536 valor maximo transmitido
        // o que vamos fazer aqui é usar os 5 digitos que temos para representar em que vamos ter 2 para parte inteira e 2 decimal
        // a outra hipotese é usar 255 e usar apenas uma casa decimal mas acho mal não suficiente
@@ -882,10 +890,10 @@ void iteracao()
 }
 
 
-void transmit(byte* message,int address_dest)
+void transmit(byte* message,int address_dest,int tamanho)
 {
   Wire.beginTransmission(address_dest); // transmit to device #8
-  Wire.write(message,6);        // sends five bytes
+  Wire.write(message,tamanho);        // sends five bytes
   Wire.endTransmission();    // stop transmitting
   //Serial.println("SentData");  
   
@@ -922,22 +930,19 @@ char rpiData[10] = "";
     //converte vetor de chars em string
     input = String(rpiData);
     
-    //verrifica se utilizador quer mudar utilização da secretaria
     if (rpiData[0] == 'g')
     {
-       buffer[0] = '%';
-       buffer[1] = rpiData[1];
-       buffer[2] = 0;
-       if(rpiData[2]=='T')
+       request[0] = '#';
+       request[1] = rpiData[1];
+       request[2] = 0;
+       if(rpiData[2] == 'T')
        {
-        buffer[2] = address;
-        buffer[3] = 0;
         for(int i=0;/*length(arduinos)*/5;i++)
         {
-          transmit(buffer,arduinos[i]);  
+         // transmit(request,arduinos[i]);  
         }
       }else
-      transmit(buffer,rpiData[2]);
+      transmit(request,rpiData[2],3);
       
     }
   }
