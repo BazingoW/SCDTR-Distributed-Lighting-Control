@@ -3,6 +3,16 @@
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <time.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/time.h>
+#include <fcntl.h>
+
+#include "pigpio.h"
 
 using boost::asio::deadline_timer;
 using boost::asio::ip::tcp;
@@ -206,18 +216,18 @@ private:
     // Put the actor back to sleep.
     deadline_.async_wait(boost::bind(&client::check_deadline, this));
   }
-  
+
   void start_read_console()
   {
-     boost::asio::async_read_until(input_, console_buffer_, '\n', 
+     boost::asio::async_read_until(input_, console_buffer_, '\n',
              boost::bind(&client::handle_read_console, this, _1, _2));
   }
-  
+
   void handle_read_console(const boost::system::error_code& ec, std::size_t length)
-  { 
+  {
     if (stopped_)
       return;
-    
+
     if (!ec)
     {
       // Extract the newline-delimited message from the buffer.
@@ -232,13 +242,13 @@ private:
         terminated_line = line + std::string("\n");
         std::size_t n = terminated_line.size();
         terminated_line.copy(send_buffer_, n);
-        boost::asio::async_write(socket_, boost::asio::buffer(send_buffer_,n), 
+        boost::asio::async_write(socket_, boost::asio::buffer(send_buffer_,n),
            boost::bind(&client::handle_send, this, _1, _2));
-        
+
       }
       /*if (length != 0)
       {
-        boost::asio::async_write(socket_, console_buffer_, 
+        boost::asio::async_write(socket_, console_buffer_,
            boost::bind(&client::handle_send, this, _1, _2));
       }*/
 
@@ -255,7 +265,7 @@ private:
   {
     if (stopped_)
       return;
-    
+
     if (!ec)
     {
       std::cout << "Sent " << length << " bytes" << std::endl;
@@ -267,7 +277,7 @@ private:
       stop();
     }
   }
-  
+
 
 private:
   bool stopped_;
