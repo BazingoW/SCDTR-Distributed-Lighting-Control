@@ -107,9 +107,8 @@ Serial.begin(250000);           // start serial for output
   buffer[0] = '%';
   buffer[1] = '0'+address;
   buffer[2] = 123;
-  serverMSG[0] = '%';
-  serverMSG[1] = '0'+address;
-  
+  serverMSG[0] = '$';
+  serverMSG[2] = address;
 
 
   
@@ -205,7 +204,7 @@ if(on)
       //Serial.println(int(inData[4])/100);
       iteracao();
       startTime = micros();
-      controlo(L1);   
+      controlo(ref);   
       
       flag = 0;
 
@@ -218,16 +217,17 @@ if(on)
         case 'l':
         {
           luxs = calc_luxs(analogRead(analogPin));
-          serverMSG[2] = '1';
-          serverMSG[3] = luxs;
-          serverMSG[4] = 0;//parece fixe por um 0 no fim pq acaba a leitura NULL
+          serverMSG[1] = '1';
+          serverMSG[3] = int(luxs);
+          serverMSG[4] = int((luxs-int(luxs))*100);
+          serverMSG[5] = 0;//parece fixe por um 0 no fim pq acaba a leitura NULL
           break;
           
         }
         //duty cycle in percentage
         case 'd':
         {
-          serverMSG[2] = 'd';
+          serverMSG[1] = 'd';
           serverMSG[3] = int(d_copy[address-1]);
           serverMSG[4] = int((d_copy[address-1]-int(d_copy[address-1]))*100);
           serverMSG[5] = 0;
@@ -236,7 +236,7 @@ if(on)
         //state occupied
         case 'o':
         {
-          serverMSG[2] = 'o';
+          serverMSG[1] = 'o';
           serverMSG[3] = estado;
           serverMSG[4] = 0;
           break;
@@ -244,8 +244,8 @@ if(on)
         //lower bound not sure what this is
         case 'L':
         {
-          serverMSG[2] = 'L';
-          serverMSG[3] = ref;
+          serverMSG[1] = 'L';
+          serverMSG[3] = L_min;
           serverMSG[4] = 0;
           break;
         }
@@ -268,14 +268,15 @@ if(on)
         // instantaneous power
          case 'p':
         {
+          power = d1[address-1]/255
           serverMSG[2] = 'p';
-          serverMSG[3] = d1[address-1]/255;
-          serverMSG[4] = 0;
-
+          serverMSG[3] = int(power);// not sure if it's this value or the exact pwm
+          serverMSG[4] = int((power-int(power))*100);
+          serverMSG[5] = 0;
+          
           if(inData[2]>'0')
           {
-            transmit(serverMSG,inData[2],5);
-            central = 1;
+            transmit(serverMSG,inData[2],6);
           }
           break;
         }
@@ -287,6 +288,7 @@ if(on)
           serverMSG[3] = 0;
           if(inData[2]>'0')
           {
+            //retransmitir a mensagem para o arduino que recebeu do arduino para recolher os dados e reenviar para o rbpi
             transmit(serverMSG,inData[2],4);
             central = 1;
           }
@@ -319,6 +321,12 @@ if(on)
          case 's':
          {
           estado = inData[2];
+          break;
+         }
+         case 'r':
+         {
+          flag = 1;
+          break;
          }
          //falta por aqui as variaveis de stream e essas coisas
          
@@ -433,7 +441,13 @@ if(inData[0]=='O')
    // significa que este arduino deverá enviar informação para o raspberry 
    else if(inData[0]== '#')
    {
+    //achoq ue é melhor separar as flags para  não interromper o consensus
       flag = 4;
+   }
+   //significa que este é o arduino que esta a receber os valor totais para fazer a soma T potencia conforto e n me lembro o que é mais
+   else if (inData[0] == '$')
+   {
+      flag_calc = 1 ;
    }
 }
 
@@ -882,6 +896,8 @@ void iteracao()
       // Serial.print("leitura de luxs actuais     ");
       // Serial.println(calc_luxs(analogRead(analogPin)));
        //delay(200);
+
+       //transmitir a informação necessária para que o outro arduino comele um novo ciclo do consensus
        transmit(buffer,address_aux);
        
        
@@ -929,10 +945,13 @@ char rpiData[10] = "";
 
     //converte vetor de chars em string
     input = String(rpiData);
-    
-    if (rpiData[0] == 'g')
+
+    switch rpiData[0]
+    {
+    case 'g':
     {
        request[0] = '#';
+       request[1] = address;//addres à qual todos os arduinos devem responder para que se faça os calculo de totais
        request[1] = rpiData[1];
        request[2] = 0;
        if(rpiData[2] == 'T')
@@ -943,8 +962,30 @@ char rpiData[10] = "";
         }
       }else
       transmit(request,rpiData[2],3);
+      break;
       
     }
+    case 's':
+    {
+      request[0] = '#';
+      request[1] = rpiData[0];
+      request[2] = 0;
+      transmit(request,rpiData[2],3);
+      break;
+    }
+    case 'r':
+    {
+      request[0] = '#';
+      request[1] = rpiData[0];
+      request[2] = 0;
+      for(int i=0;/*length(arduinos)*/5;i++)
+        {
+         // transmit(request,arduinos[i]);  
+        }
+    }
+
+    //insert here the streaming stuff
+    } 
   }
 }
 
