@@ -37,7 +37,6 @@ int address, address_aux;
 long  temp;
 int flag = 0;
 int flag_arduinos = 0;
-int flag_cons = 0;
 bool on = 0;
 float ext_illum = 0;
 float min_best[n_iter];
@@ -194,7 +193,7 @@ void loop() {
 
     //define start time
     // prob this is not the final example becuase we might need check the messages to send to the server and the consensus
-    if (flag_cons == 3)
+    if (flag == 3)
     {
       // Serial.println("data info");
 
@@ -213,36 +212,39 @@ void loop() {
       
       controlo(L1);
       startTime = micros();
-      
-          
-            luxs = calc_luxs(analogRead(analogPin));
-            //luxs = average();
-            serverMSG[1] = '1';
-            serverMSG[3] = int(luxs);
-            serverMSG[4] = int((luxs - int(luxs)) * 100);
-            serverMSG[5] = 0;//parece fixe por um 0 no fim pq acaba a leitura NULL
-          
-          
-        //duty cycle in percentage
-       
-            serverMSG[1] = 'd';
-            serverMSG[3] = int(d_copy[address - 1]);
-            serverMSG[4] = int((d_copy[address - 1] - int(d_copy[address - 1])) * 100);
-            serverMSG[5] = 0;
-
-            transmit(serverMSG,100,6);
-        
-      
-      flag_cons = 0;
+      flag = 0;
 
     }
-    
     if ( flag_arduinos == 4)
     {
      
       flag_arduinos =0;
       switch (char(inData1[2]))
-      {           
+      {
+        Serial.println(inData1[2]);
+        Serial.println(char(inData1[2]));
+        Serial.println('l' == inData1[2]);
+        
+        
+        //measured luminance
+        case 'l':
+          {
+            luxs = calc_luxs(analogRead(analogPin));
+            serverMSG[1] = '1';
+            serverMSG[3] = int(luxs);
+            serverMSG[4] = int((luxs - int(luxs)) * 100);
+            serverMSG[5] = 0;//parece fixe por um 0 no fim pq acaba a leitura NULL
+            break;
+          }
+        //duty cycle in percentage
+        case 'd':
+          {
+            serverMSG[1] = 'd';
+            serverMSG[3] = int(d_copy[address - 1]);
+            serverMSG[4] = int((d_copy[address - 1] - int(d_copy[address - 1])) * 100);
+            serverMSG[5] = 0;
+            break;
+          }
         //state occupied
         case 'o':
           {
@@ -276,7 +278,7 @@ void loop() {
             break;
           }
         // instantaneous power
-        /*case 'p':
+        case 'p':
           {
             // power = d1[address-1]/255
             serverMSG[1] = 'p';
@@ -327,7 +329,7 @@ void loop() {
               central = 1;
             }
             break;
-          }*/
+          }
         case 's':
           {
             estado = inData1[2];
@@ -339,8 +341,7 @@ void loop() {
           }
         case 'q':
           {
-            flag = 0;
-            on =0;
+            flag = 1;
             break;
           }
           //falta por aqui as variaveis de stream e essas coisas
@@ -454,6 +455,11 @@ void receiveEvent(int howMany)
         inData[index] = '\0'; // Null terminate the string
       }
   }
+  //Serial.println("ReceivedData");
+  //Serial.println(inData);
+  //Serial.println(index);
+  //  Serial.println(size(howMany))
+
   if (aux == 'O')
   { //se recebi um O, reenvio um R e calibro
     flag = 1;
@@ -465,7 +471,7 @@ void receiveEvent(int howMany)
   // significa que o consensus do outro nó acabou e que este device deverá ser os novos comandos e calcular novos valores
   else if (aux == '%')
   {
-    flag_cons = 3;
+    flag = 3;
   }
   // significa que este arduino deverá enviar informação para o raspberry
   else if (aux == '#')
@@ -564,7 +570,6 @@ void calibrar1()
   delay(500);
 
   analogWrite(ledpin, 0);
-  delay(500);
 
 
   o1 = calc_luxs(analogRead(analogPin));
@@ -574,12 +579,10 @@ void calibrar1()
   declive = 255 / (k11 * 100);
   k12 = kmutuo;
 
-  lux_max = 170/declive;
-  lux_min = 85/declive;
+  lux_max = 85/declive;
+  lux_min = 170/declive;
   Serial.println(lux_max);
   Serial.println(lux_min); 
-  Serial.print("valor de máximo de luxs que este led consegue atingir ");
-  Serial.println(255/declive);
   L1 = lux_min;
 
   
@@ -1042,16 +1045,10 @@ void SerialInputs()
           request[0] = '#';
           request[1] = rpiData[0];
           request[2] = 0;
-          transmit(request,address_aux,3);
-          flag = 0;
-          on = 0;
-          break;
-          
-          /*
-          for (int i = 0;/*length(arduinos)/i < 5; i++)
+          for (int i = 0;/*length(arduinos)*/i < 5; i++)
           {
             // transmit(request,arduinos[i]);
-          }*/
+          }
         }
 
         //insert here the streaming stuff
