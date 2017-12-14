@@ -1,6 +1,6 @@
 %The system
-k11 = 2; k12 = 1; k21 = 1; k22 = 2;
-L1 = 150; o1 = 30; L2 = 80; o2 = 0;
+k11 = 1.1; k12 = 0.28; k21 = 0.16; k22 = 0.74;
+L1 = 27.72; o1 = 0; L2 = 16.4; o2 = 0;
 K = [k11, k12 ; k21 , k22];
 L = [L1;L2]; o = [o1;o2];
 
@@ -23,7 +23,7 @@ d1_copy = [0;0];
 y2 = [0;0];
 k2 = [k21;k22]; 
 %iterations
-for i=1:500,
+for i=1:50,
    % node 1
    d11_best = -1;
    d12_best = -1;
@@ -347,7 +347,7 @@ d_ = d2_av
 l_ = K*d_+o
 %Plots
 figure(10);
-plot(1:500, av1, 1:500, av2);
+plot(1:50, av1, 1:50, av2);
 legend('d_1','d_2');
 title('primal vars');
 xlabel('iter');
