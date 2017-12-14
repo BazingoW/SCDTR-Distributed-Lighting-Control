@@ -8,6 +8,7 @@
 //Resistencia do circuito do LDR
 #define r1 10000.0
 #define rh 0.01
+#define ZERO 200
 
 long int lastMeasure = 0;
 //ultimos 5 valores de luxs
@@ -25,12 +26,12 @@ float kself, kmutuo;
 int ledpin = 9;
 int raspberry_add = 100;
 float luxs = 3;
-int estado = 1;
+int estado = 0;
 float ref = 20.0;
 //valor que se se encontrar a 1 quer dizer que não é preciso enviar a mesnagem para o rapberry
 int central = 0;
 int arduinos[1];
-
+byte end_consensus[2] = {'z', 0};
 
 int pin_verif = 2;
 int address, address_aux;
@@ -81,12 +82,13 @@ float y2[] = {0, 0};
 float k2[] = {k21, k22};
 
 
-void setup() {
+void setup()
+{
   Serial.begin(250000);           // start serial for output
-inData[0] = 42;
-inData1[0] = 42;
-inData1[1] = '\0';
-inData[1] = '\0';
+  inData[0] = 42;
+  inData1[0] = 42;
+  inData1[1] = '\0';
+  inData[1] = '\0';
   // define os endereços do arduino segundo o estado do pin
   // define initial message to send to other arduinos
 
@@ -143,7 +145,8 @@ inData[1] = '\0';
 
 
 
-void loop() {
+void loop()
+{
 
 
   if (flag > 0)
@@ -194,171 +197,157 @@ void loop() {
 
     //define start time
     // prob this is not the final example becuase we might need check the messages to send to the server and the consensus
-    if (flag_cons == 3)
+    if (flag == 3 && flag_cons == 0)
     {
       // Serial.println("data info");
 
-      if (inData[2] == 200)
+      if (inData[2] == ZERO)
         inData[2] = 0;
-      if (inData[4] == 200)
+      if (inData[4] == ZERO)
         inData[4] = 0;
-      d_copy[0] = int(inData[1]) + int(inData[2]) / 100;
-      d_copy[1] = int(inData[3]) + int(inData[4]) / 100;
       // Serial.println("valores de d da iteração anterior");
       //Serial.println(int(inData[1]));
       // Serial.println(float(int(inData[2])/100));
       //Serial.println(int(inData[1]));
       //Serial.println(int(inData[4])/100);
-      iteracao();
-      
-      controlo(L1);
-      startTime = micros();
-      
-          
-            luxs = calc_luxs(analogRead(analogPin));
-            //luxs = average();
-            serverMSG[1] = '1';
-            serverMSG[3] = int(luxs);
-            serverMSG[4] = int((luxs - int(luxs)) * 100);
-            serverMSG[5] = 0;//parece fixe por um 0 no fim pq acaba a leitura NULL
-          
-          
-        //duty cycle in percentage
-       
-            serverMSG[1] = 'd';
-            serverMSG[3] = int(d_copy[address - 1]);
-            serverMSG[4] = int((d_copy[address - 1] - int(d_copy[address - 1])) * 100);
-            serverMSG[5] = 0;
 
-            transmit(serverMSG,100,6);
-        
-      
-      flag_cons = 0;
+      /*
+        Serial.println("anterior");
+        Serial.println(d_copy[0]);
+
+        Serial.println("novo ");
+        Serial.println(inData[1] + inData[2] / 100.0);*/
+
+       if(      (abs(d_copy[0]-   (inData[1] +inData[2] / 100))   <1) && (abs(d_copy[1] - (inData[3] + inData[4] / 100))<1) && (d_copy[0]!=0))
+      //if (int(d_copy[0]) - int(inData[1]) == 0  && int(d_copy[1]) - int(inData[3] == 0) && d_copy[0] != 0)
+      {
+        Serial.println("end consensus");
+
+        transmit(end_consensus, address_aux, 2);
+        flag_cons = 1;
+        flag = 0;
+
+      } else
+      {
+        /*
+          Serial.println("anterioir");
+          Serial.println(d_copy[0]);
+          Serial.println(d_copy[1]);*/
+
+
+        d_copy[0] = int(inData[1]) + int(inData[2]) / 100;
+        d_copy[1] = int(inData[3]) + int(inData[4]) / 100;
+        iteracao();
+        flag = 0;
+        /*
+          Serial.println("novo");
+          Serial.println(d_copy[0]);
+          Serial.println(d_copy[1]);*/
+
+      }
 
     }
-    
-    if ( flag_arduinos == 4)
+
+    if (flag_cons )
     {
-     
-      flag_arduinos =0;
-      switch (char(inData1[2]))
-      {           
-        //state occupied
-        case 'o':
+      startTime = micros();
+      controlo(L1);
+      if ( flag_arduinos == 4)
+      {
+        flag_arduinos = 0;
+        if (char(inData1[1]) == 's')
+        {
+          Serial.print("set room occupattion:  ");
+          Serial.println(inData1[2]-'a');
+          if (estado != (inData1[2] - 'a'))
           {
-            serverMSG[1] = 'o';
-            serverMSG[3] = estado;
-            serverMSG[4] = 0;
-            break;
-          }
-        //lower bound not sure what this is
-        case 'L':
-          {
-            serverMSG[1] = 'L';
-            //serverMSG[3] = L_min;
-            serverMSG[4] = 0;
-            break;
-          }
-        // background illuminace
-        case 'O':
-          {
-            serverMSG[1] = 'O';
-            serverMSG[3] = o1;
-            serverMSG[4] = 0;
-            break;
-          }
-        //illuminace control referece
-        case 'r':
-          {
-            serverMSG[1] = 'L';
-            serverMSG[3] = ref;//d1[0]
-            serverMSG[4] = 0;
-            break;
-          }
-        // instantaneous power
-        /*case 'p':
-          {
-            // power = d1[address-1]/255
-            serverMSG[1] = 'p';
-            // serverMSG[3] = int(power);// not sure if it's this value or the exact pwm
-            //  serverMSG[4] = int((power-int(power))*100);
-            serverMSG[5] = 0;
-
-            if (inData[2] > '0')
-            {
-              transmit(serverMSG, inData1[2], 6);
-            }
-            break;
-          }
-        //
-        case 'e':// para isto temos de guardar a media por segundo do led o mesmo para o de cima
-          {
-
-            serverMSG[2] = d1[address - 1];
-            serverMSG[3] = 0;
-            if (inData[2] > '0')
-            {
-              //retransmitir a mensagem para o arduino que recebeu do arduino para recolher os dados e reenviar para o rbpi
-              transmit(serverMSG, inData1[2], 4);
-              central = 1;
-            }
-            break;
-          }
-        case 'c':
-          {
-            serverMSG[2] = 'c';
-            serverMSG[3] = d1[address - 1] / 255;
-            serverMSG[4] = 0;
-            if (inData[2] > '0')
-            {
-              transmit(serverMSG, inData1[2], 5);
-              central = 1;
-            }
-            break;
-          }
-        case 'v':
-          {
-            serverMSG[2] = 'v';
-            serverMSG[3] = d1[address - 1] / 255;
-            serverMSG[4] = 0;
-            if (inData[2] > '0')
-            {
-              transmit(serverMSG, inData1[2], 5);
-              central = 1;
-            }
-            break;
-          }*/
-        case 's':
-          {
-            estado = inData1[2];
-            if(estado == 1)
+            estado = inData1[2] - 'a' ;
+            if (estado == 1)
               L1 = lux_max;
-              else
-              L1 = lux_min; 
-            break;
-          }
-        case 'q':
-          {
+            else
+              L1 = lux_min;
+            // indica ao programa que deverá ser recalculado o consensus enviar mensagem
+            flag_cons = 0;
             flag = 0;
-            on =0;
-            break;
+            iteracao();
+            Serial.println("b4");
+            Serial.println(estado);
+            return;
+            
           }
-          //falta por aqui as variaveis de stream e essas coisas
-
+        } else {
+          switch (char(inData1[2]))
+          {
+            case 'o':
+              {
+                serverMSG[1] = 'o';
+                if (estado == 1)
+                  serverMSG[3] = estado;
+                else
+                  serverMSG[3] = ZERO;
+                serverMSG[4] = 0;
+                break;
+              }
+            //lower bound not sure what this is
+            case 'L':
+              {
+                serverMSG[1] = 'L';
+                serverMSG[3] = L1;
+                serverMSG[4] = 0;
+                break;
+              }
+            // background illuminace
+            case 'O':
+              {
+                serverMSG[1] = 'O';
+                serverMSG[3] = int(o1);
+                serverMSG[4] = int((o1-int(o1))*100);
+                serverMSG[4] = 0;
+                break;
+              }
+            //illuminace control referece
+            case 'r':
+              {
+                serverMSG[1] = 'L';
+                serverMSG[3] = int(L1);
+                serverMSG[4] = int((L1-int(L1))*100);
+                serverMSG[5] = 0;
+                break;
+              }
+          }
+          // confirmar o tamanho das coisas
+          //100 DUMMY ADDRESS for the rasp1 to sniff
+          transmit(serverMSG, address_aux, 12);
+          Serial.println(serverMSG[3]);
+        }
 
       }
       // confirmar o tamanho das coisas
-      //100 DUMMY ADDRESS for the rasp1 to sniff
-      transmit(serverMSG,100,12);
-      Serial.println(serverMSG[3]);
+      //transmit(serverMSG,other_address,);
+      //measured luminance
+      unsigned long endTime = micros();
+      delayMicroseconds((sampInterval - (endTime - startTime)) / 2);
+      luxs = calc_luxs(analogRead(analogPin));
+      serverMSG[1] = '1';
+      serverMSG[3] = int(luxs);
+      serverMSG[4] = int((luxs - int(luxs)) * 100);
+      serverMSG[5] = 0;//parece fixe por um 0 no fim pq acaba a leitura NULL
+      transmit(serverMSG, address_aux, 6);
+
+
+      //espera o tempo necessario para passar 1 sampling interval
+      delayMicroseconds((sampInterval - (endTime - startTime)) / 2);
+
+      //duty cycle in percentage
+      serverMSG[1] = 'd';
+      serverMSG[3] = int(d_copy[address - 1]);
+      serverMSG[4] = int((d_copy[address - 1] - int(d_copy[address - 1])) * 100);
+      serverMSG[5] = 0;
+      transmit(serverMSG, address_aux, 6);
+
     }
-     // confirmar o tamanho das coisas
-  //transmit(serverMSG,other_address,);
-  unsigned long endTime = micros();
-  //espera o tempo necessario para passar 1 sampling interval
-  delayMicroseconds(sampInterval - (endTime - startTime));
+
   }
- 
 }
 
 //função que calcula o valor de luxs
@@ -381,7 +370,7 @@ float calc_luxs(int val)
   if (address == 2)
     return 17 * luxs;
 
-  return luxs;
+  return 2 * luxs;
 }
 
 //verifica se arduino nao esta a mandar muita informação há algum tempo
@@ -430,57 +419,76 @@ void receiveEvent(int howMany)
 
   //string de data recebida
   String input;
-  byte aux;
+  byte aux = 42;
+  byte garbage;
 
   while (Wire.available() > 0) { // loop through all but the last
 
+    if (aux == '$')
+    {
+      garbage = Wire.read();
+      continue;
+    }
+
     if (start == 0)
-      {
-        aux =  Wire.read(); //Read a character
-        start = 1;
-        continue;
-      }
-      
-    if(aux=='#')
+    {
+      aux =  Wire.read(); //Read a character
+      start = 1;
+      continue;
+    }
+
+    if (aux == '#')
     {
       inData1[index] = Wire.read();
       index++; // Increment where to write next
       inData1[index] = '\0'; // Null terminate the string
     }
     else
-      {
-        inData[index] = Wire.read();
-        index++; // Increment where to write next
-        inData[index] = '\0'; // Null terminate the string
-      }
+    {
+      inData[index] = Wire.read();
+      index++; // Increment where to write next
+      inData[index] = '\0'; // Null terminate the string
+    }
   }
+  //Serial.println("ReceivedData");
+  //Serial.println(inData);
+  //Serial.println(index);
+  //  Serial.println(size(howMany))
+
   if (aux == 'O')
   { //se recebi um O, reenvio um R e calibro
+    Serial.println("O");
     flag = 1;
   }
   else if (aux == 'R')
   {
+    Serial.println("R");
     flag = 2;
   }
   // significa que o consensus do outro nó acabou e que este device deverá ser os novos comandos e calcular novos valores
   else if (aux == '%')
   {
-    flag_cons = 3;
+    flag = 3;
+    flag_cons=0;
   }
   // significa que este arduino deverá enviar informação para o raspberry
   else if (aux == '#')
   {
     //achoq ue é melhor separar as flags para  não interromper o consensus
     flag_arduinos = 4;
-     //   Serial.println("indata ")   
-   /*
-    for (int i = 0; i < 10; i++)
-    {
-      inData1[i] = inData[i];
-    }*/
-   // inData[1] = 'l';
-   //  Serial.println(inData1[1]);
+    //   Serial.println("indata ")
+    /*
+      for (int i = 0; i < 10; i++)
+      {
+       inData1[i] = inData[i];
+      }*/
+    // inData[1] = 'l';
+    //  Serial.println(inData1[1]);
 
+  } else if (aux == 'z')
+  {
+    flag = 0;
+    flag_cons = 1;
   }
   //significa que este é o arduino que esta a receber os valor totais para fazer a soma T potencia conforto e n me lembro o que é mais
   /* else if (inData[0] == '$')
@@ -573,17 +581,23 @@ void calibrar1()
   k11 = kself;
   declive = 255 / (k11 * 100);
   k12 = kmutuo;
+Serial.println(k11);
+Serial.println(k12);
+Serial.println(k11+k12);
+Serial.println(200*(k11+k12));
 
-  lux_max = 170/declive;
-  lux_min = 85/declive;
+Serial.println((200*(k11+k12))/3);
+  //lux_max = 170 / declive;
+  //lux_min = 85 / declive;
+  //achei que se notava pouco a diferenca na luminusidade por isso repensei nos limites
+
+  lux_max = (300 *(k11+k12))/4;
+  lux_min = (100 *(k11+k12))/4;
   Serial.println(lux_max);
-  Serial.println(lux_min); 
-  Serial.print("valor de máximo de luxs que este led consegue atingir ");
-  Serial.println(255/declive);
+  Serial.println(lux_min);
   L1 = lux_min;
 
-  
-  
+
 
 
 }
@@ -924,15 +938,17 @@ void iteracao()
   // a outra hipotese é usar 255 e usar apenas uma casa decimal mas acho mal não suficiente
   buffer[1] = int(d1[1]);
   buffer[2] = int((d1[1] - int(d1[1])) * 100);
+  /*Serial.print("valor float   ");
+    Serial.println(buffer[2]);*/
   if (buffer[2] == 0)
   {
-    buffer[2] = 200;
+    buffer[2] = ZERO;
   }
   buffer[3] = int(d1[0]);
   buffer[4] = int((d1[0] - int(d1[0])) * 100);
   if (buffer[4] == 0)
   {
-    buffer[4] = 200;
+    buffer[4] = ZERO;
   }
   buffer[5] = 0;
   //set's up the mensage to send to the other node
@@ -959,7 +975,7 @@ void iteracao()
 }
 
 
-void transmit(byte* message, int address_dest, int tamanho)
+void transmit(byte * message, int address_dest, int tamanho)
 {
   Wire.beginTransmission(address_dest); // transmit to device #8
   Wire.write(message, tamanho);       // sends five bytes
@@ -1003,58 +1019,54 @@ void SerialInputs()
     {
       case 'g':
         {
-          
+
           request[0] = '#';
           request[1] = address;//address à qual todos os arduinos devem responder para que se faça os calculo de totais
           request[2] = rpiData[1];
           Serial.println(rpiData[1]);
           request[3] = 0;
-          if (rpiData[2] == 'T')
+          if (address == rpiData[2] - 'a')
           {
-            for (int i = 0;/*length(arduinos)*/i < 5; i++)
-            {
-              // transmit(request,arduinos[i]);
-            }
-          } else
-           {
-            transmit(request, rpiData[2] - 'a', 4);
-            if(address == rpiData[2] - 'a')
-            {
-              flag_arduinos = 4;
-              for(int i=0;i<10;i++)
+            flag_arduinos = 4;
+            for (int i = 0; i < 10; i++)
               inData1[i] = request[i];
-            }
-           }
-            
+          } else
+          {
+            Serial.println("msg to onther arduino g case");
+
+            transmit(request, rpiData[2] - 'a', 4);
+          }
+
           break;
 
         }
       case 's':
         {
+
           request[0] = '#';
-          request[1] = rpiData[0];
-          request[2] = 0;
-          transmit(request, rpiData[2], 3);
+          request[1] = 's';
+          request[2] = rpiData[1];
+          request[3] = 0;
+          if (address == rpiData[2] - 'a')
+          {
+            flag_arduinos = 4;
+            for (int i = 0; i < 10; i++)
+              inData1[i] = request[i];
+          } else
+            transmit(request, rpiData[2] - 'a', 4);
           break;
         }
       case 'r':
         {
-          request[0] = '#';
-          request[1] = rpiData[0];
-          request[2] = 0;
-          transmit(request,address_aux,3);
-          flag = 0;
+          delay(1000);
+          Serial.println("we are goint to reset the system pls w8 a few seconds whiel recalibration occcurs");
+          Wire.beginTransmission(address_aux); // transmit to device
+          Wire.write("O");
+          Wire.endTransmission();
+          // verificar
+          flag = 2;
           on = 0;
-          break;
-          
-          /*
-          for (int i = 0;/*length(arduinos)/i < 5; i++)
-          {
-            // transmit(request,arduinos[i]);
-          }*/
         }
-
-        //insert here the streaming stuff
     }
   }
 }
@@ -1202,6 +1214,7 @@ void controlo(float reference)
   //Serial.print("pwmvalue : ");
   //Serial.println(pwm);
 }
+
 
 
 
