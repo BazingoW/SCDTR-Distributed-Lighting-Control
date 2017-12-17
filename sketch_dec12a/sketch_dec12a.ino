@@ -9,8 +9,10 @@
 #define r1 10000.0
 #define rh 0.01
 #define ZERO 200
+#define max_iter 50
 
 long int lastMeasure = 0;
+int iter_cons = 0;
 float  pwm;
 //ultimos 5 valores de luxs
 float last_luxs[tamluxs];
@@ -46,6 +48,7 @@ float min_best[n_iter];
 byte buffer[3] ;
 byte serverMSG[4];
 byte request[4];
+int centralized = 1;
 
 
 //vetor de chars recebidos
@@ -99,10 +102,6 @@ void setup()
   {
     address = 2;
     address_aux = 1;
-    k11 = k22;
-    k12 = k21;
-    L1 = L2;
-    o1 = o2;
   }
   else
   {
@@ -212,17 +211,21 @@ void loop()
       //Serial.println(int(inData[1]));
       //Serial.println(int(inData[4])/100);
 
-      /*
-        Serial.println("anterior");
+      
+       /* Serial.println("anterior");
         Serial.println(d_copy[0]);
 
         Serial.println("novo ");
         Serial.println(inData[1] + inData[2] / 100.0);*/
 
-       if(      (abs(d_copy[0]-   (inData[1] +inData[2] / 100))   <1) && (abs(d_copy[1] - (inData[3] + inData[4] / 100))<1) && (d_copy[0]!=0))
+       if(      ((abs(d_copy[0]-   (inData[1] +inData[2] / 100))   <0.1) && (abs(d_copy[1] - (inData[3] + inData[4] / 100))<0.1) && (d_copy[0]!=0)) || iter_cons == max_iter)
       //if (int(d_copy[0]) - int(inData[1]) == 0  && int(d_copy[1]) - int(inData[3] == 0) && d_copy[0] != 0)
       {
+
+        Serial.println(d1[0]);
+        Serial.println(d1[1]);
         Serial.println("end consensus");
+        iter_cons = 0;
 
         transmit(end_consensus, address_aux, 2);
         flag_cons = 1;
@@ -230,6 +233,7 @@ void loop()
 
       } else
       {
+        iter_cons ++;
         /*
           Serial.println("anterioir");
           Serial.println(d_copy[0]);
@@ -238,6 +242,7 @@ void loop()
 
         d_copy[0] = int(inData[1]) + int(inData[2]) / 100;
         d_copy[1] = int(inData[3]) + int(inData[4]) / 100;
+        //Serial.println(L1);
         iteracao();
         flag = 0;
         /*
@@ -270,9 +275,14 @@ void loop()
             // indica ao programa que deverá ser recalculado o consensus enviar mensagem
             flag_cons = 0;
             flag = 0;
+            serverMSG[1] = 'r';
+            serverMSG[3] = int(L1);
+            serverMSG[4] = (L1-int(L1))*100;
+            serverMSG[5] = 0;
             iteracao();
             Serial.println("b4");
             Serial.println(estado);
+            
             return;
             
           }
@@ -293,8 +303,10 @@ void loop()
             case 'L':
               {
                 serverMSG[1] = 'L';
-                serverMSG[3] = L1;
-                serverMSG[4] = 0;
+                serverMSG[3] = int(lux_min);
+                serverMSG[4] = (lux_min -int(lux_min)) *100;
+                serverMSG[5] = 0;
+                //transmit(serverMSG,address_aux,6);
                 break;
               }
             // background illuminace
@@ -311,7 +323,7 @@ void loop()
               {
                 serverMSG[1] = 'r';
                 serverMSG[3] = int(L1);
-                serverMSG[4] = int((L1-int(L1))*100);
+                serverMSG[4] = (L1-int(L1))*100;
                 serverMSG[5] = 0;
                 break;
               }
@@ -505,6 +517,8 @@ void calibrar1()
   estado = 0;
  d1[0] =0;
  d1[1] =0;
+  y1[0] =0;
+ y1[1] =0;
  d1_av[0] =0;
  d1_av[1] =0;
  d_copy[0] =0;
@@ -589,21 +603,26 @@ void calibrar1()
   k11 = kself;
   declive = 255 / (k11 * 100);
   k12 = kmutuo;
-Serial.println(k11);
-Serial.println(k12);
-Serial.println(k11+k12);
-Serial.println(200*(k11+k12));
-
-Serial.println((200*(k11+k12))/3);
   //lux_max = 170 / declive;
   //lux_min = 85 / declive;
   //achei que se notava pouco a diferenca na luminusidade por isso repensei nos limites
 
+/*
   lux_max = (300 *(k11+k12))/4;
-  lux_min = (100 *(k11+k12))/4;
+  lux_min = (100 *(k11+k12))/4;*/
+  
+  lux_max = (400 *(k11+k12))/4;
+  lux_min = (10 *(k11+k12))/4;
+  Serial.println("max and min values");
   Serial.println(lux_max);
   Serial.println(lux_min);
   L1 = lux_min;
+  serverMSG[1] = 'r';
+  serverMSG[3] = int(L1);
+  serverMSG[4] = (L1-int(L1))*100;
+  serverMSG[5] = 0;
+  transmit(serverMSG,address_aux,6);
+  Serial.println(L1);
 /*  serverMSG[2] = 'r';
   serverMSG[3] = int(L1);
  serverMSG[4] = int(L1-  int( L1)*100);
@@ -903,7 +922,7 @@ void iteracao()
   //store data and save for next cycle
   //best_d11[i] = d11_best;
   //best_d12[i] = d12_best;
-  float d1[] = {};
+ // float d1[] = {};
   d1[0] = d11_best;
   d1[1] = d12_best;
   /*
@@ -978,9 +997,6 @@ void iteracao()
 
   //transmitir a informação necessária para que o outro arduino comele um novo ciclo do consensus
   transmit(buffer, address_aux, 6);
-
-
-
 
 }
 
@@ -1076,7 +1092,14 @@ void SerialInputs()
           // verificar
           flag = 2;
           on = 0;
+          break;
         }
+        case 'q':
+        {
+          centralized = !centralized; 
+          break;
+        }
+        
     }
   }
 }
@@ -1190,8 +1213,11 @@ void controlo(float reference)
 
   //write to pin pwm, if feedforward is on add that as well
 
-  pwm = (declive * u) + d1[0] * 255 / 100;
 
+if(centralized)
+  pwm = (declive * u) + d1[0] * 255 / 100;
+else 
+pwm = declive * (u+ reference);
   if (pwm < 0)
     pwm = 0;
   if (pwm > 255)

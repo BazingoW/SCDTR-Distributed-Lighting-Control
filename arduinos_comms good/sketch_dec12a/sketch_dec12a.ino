@@ -218,7 +218,7 @@ void loop()
         Serial.println("novo ");
         Serial.println(inData[1] + inData[2] / 100.0);*/
 
-       if(      (abs(d_copy[0]-   (inData[1] +inData[2] / 100))   <1) && (abs(d_copy[1] - (inData[3] + inData[4] / 100))<1) && (d_copy[0]!=0))
+       if(      (abs(d_copy[0]-   (inData[1] +inData[2] / 100))   <1) && (abs(d_copy[1] - (inData[3] + inData[4] / 100))<1) && (d_copy[0]!=0)) || iter_cons == max_iter)
       //if (int(d_copy[0]) - int(inData[1]) == 0  && int(d_copy[1]) - int(inData[3] == 0) && d_copy[0] != 0)
       {
         Serial.println("end consensus");
@@ -229,6 +229,7 @@ void loop()
 
       } else
       {
+        iter_cons++;
         /*
           Serial.println("anterioir");
           Serial.println(d_copy[0]);

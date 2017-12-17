@@ -25,6 +25,7 @@
 
 //variaveis de HIGH E LOW
 float minluxs = 20, maxluxs = 50;
+int centralized = 1;
 
 //valor de lux definido pelo utilizador
 float desejado = 0;
