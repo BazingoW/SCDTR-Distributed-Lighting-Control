@@ -29,7 +29,7 @@ float kself, kmutuo;
 int ledpin = 9;
 int raspberry_add = 100;
 float luxs = 3;
-int estado = 0;
+int estado;
 float ref = 20.0;
 //valor que se se encontrar a 1 quer dizer que não é preciso enviar a mesnagem para o rapberry
 int central = 0;
@@ -48,7 +48,7 @@ float min_best[n_iter];
 byte buffer[3] ;
 byte serverMSG[4];
 byte request[4];
-int centralized = 1;
+int coupled = 1;
 
 
 //vetor de chars recebidos
@@ -211,15 +211,24 @@ void loop()
       //Serial.println(int(inData[1]));
       //Serial.println(int(inData[4])/100);
 
-      
-       /* Serial.println("anterior");
+      /*
+        Serial.println("anterior");
         Serial.println(d_copy[0]);
 
         Serial.println("novo ");
-        Serial.println(inData[1] + inData[2] / 100.0);*/
+        Serial.println(inData[1] + inData[2] / 100.0);
 
-       if(      ((abs(d_copy[0]-   (inData[1] +inData[2] / 100))   <0.1) && (abs(d_copy[1] - (inData[3] + inData[4] / 100))<0.1) && (d_copy[0]!=0)) || iter_cons == max_iter)
-      //if (int(d_copy[0]) - int(inData[1]) == 0  && int(d_copy[1]) - int(inData[3] == 0) && d_copy[0] != 0)
+        Serial.println("anterior_2");
+        Serial.println(d_copy[1]);
+
+        Serial.println("novo_2 ");
+        Serial.println(inData[3] + inData[4] / 100.0);
+      */
+      Serial.println(iter_cons);
+
+
+      if (      (((abs(d_copy[0] -   (inData[1] + inData[2] / 100))   < 0.1) && (abs(d_copy[1] - (inData[3] + inData[4] / 100)) < 0.1 ) && (d_copy[0] != 0)) && iter_cons > 6) || iter_cons == max_iter)
+        //if (int(d_copy[0]) - int(inData[1]) == 0  && int(d_copy[1]) - int(inData[3] == 0) && d_copy[0] != 0)
       {
 
         Serial.println(d1[0]);
@@ -264,7 +273,7 @@ void loop()
         if (char(inData1[1]) == 's')
         {
           Serial.print("set room occupattion:  ");
-          Serial.println(inData1[2]-'a');
+          Serial.println(inData1[2] - 'a');
           if (estado != (inData1[2] - 'a'))
           {
             estado = inData1[2] - 'a' ;
@@ -277,14 +286,31 @@ void loop()
             flag = 0;
             serverMSG[1] = 'r';
             serverMSG[3] = int(L1);
-            serverMSG[4] = (L1-int(L1))*100;
+            serverMSG[4] = (L1 - int(L1)) * 100;
             serverMSG[5] = 0;
+            transmit(serverMSG, address_aux, 6);
+            delay(100);
+
+            serverMSG[1] = 'o';
+            serverMSG[3] = estado;
+            serverMSG[4] = 0;
+            transmit(serverMSG, address_aux, 5);
+            delay(100);
+            //estado = 0;
+            d1[0] = 0;
+            d1[1] = 0;
+            y1[0] = 0;
+            y1[1] = 0;
+            d1_av[0] = 0;
+            d1_av[1] = 0;
+            d_copy[0] = 0;
+            d_copy[1] = 0;
             iteracao();
             Serial.println("b4");
             Serial.println(estado);
-            
+
             return;
-            
+
           }
         } else {
           switch (char(inData1[2]))
@@ -304,7 +330,7 @@ void loop()
               {
                 serverMSG[1] = 'L';
                 serverMSG[3] = int(lux_min);
-                serverMSG[4] = (lux_min -int(lux_min)) *100;
+                serverMSG[4] = (lux_min - int(lux_min)) * 100;
                 serverMSG[5] = 0;
                 //transmit(serverMSG,address_aux,6);
                 break;
@@ -314,7 +340,7 @@ void loop()
               {
                 serverMSG[1] = 'O';
                 serverMSG[3] = int(o1);
-                serverMSG[4] = int((o1-int(o1))*100);
+                serverMSG[4] = int((o1 - int(o1)) * 100);
                 serverMSG[5] = 0;
                 break;
               }
@@ -323,7 +349,7 @@ void loop()
               {
                 serverMSG[1] = 'r';
                 serverMSG[3] = int(L1);
-                serverMSG[4] = (L1-int(L1))*100;
+                serverMSG[4] = (L1 - int(L1)) * 100;
                 serverMSG[5] = 0;
                 break;
               }
@@ -354,7 +380,7 @@ void loop()
       //duty cycle in percentage
       serverMSG[1] = 'd';
       serverMSG[3] = int(pwm);
-      serverMSG[4] = int((int(pwm) -pwm)* 100);
+      serverMSG[4] = int((int(pwm) - pwm) * 100);
       serverMSG[5] = 0;
       transmit(serverMSG, address_aux, 6);
 
@@ -482,7 +508,7 @@ void receiveEvent(int howMany)
   else if (aux == '%')
   {
     flag = 3;
-    flag_cons=0;
+    flag_cons = 0;
   }
   // significa que este arduino deverá enviar informação para o raspberry
   else if (aux == '#')
@@ -502,6 +528,7 @@ void receiveEvent(int howMany)
   {
     flag = 0;
     flag_cons = 1;
+    iter_cons = 0;
   }
   //significa que este é o arduino que esta a receber os valor totais para fazer a soma T potencia conforto e n me lembro o que é mais
   /* else if (inData[0] == '$')
@@ -515,14 +542,14 @@ void calibrar1()
 {
 
   estado = 0;
- d1[0] =0;
- d1[1] =0;
-  y1[0] =0;
- y1[1] =0;
- d1_av[0] =0;
- d1_av[1] =0;
- d_copy[0] =0;
- d_copy[1] =0;
+  d1[0] = 0;
+  d1[1] = 0;
+  y1[0] = 0;
+  y1[1] = 0;
+  d1_av[0] = 0;
+  d1_av[1] = 0;
+  d_copy[0] = 0;
+  d_copy[1] = 0;
   Serial.println("CalibFunc");
   analogWrite(ledpin, 0);
   delay(200);
@@ -607,27 +634,61 @@ void calibrar1()
   //lux_min = 85 / declive;
   //achei que se notava pouco a diferenca na luminusidade por isso repensei nos limites
 
-/*
-  lux_max = (300 *(k11+k12))/4;
-  lux_min = (100 *(k11+k12))/4;*/
-  
-  lux_max = (400 *(k11+k12))/4;
-  lux_min = (10 *(k11+k12))/4;
+  /*
+    lux_max = (300 *(k11+k12))/4;
+    lux_min = (100 *(k11+k12))/4;*/
+
+  lux_max = (360 * (k11 + k12)) / 4;
+  lux_min = (70 * (k11 + k12)) / 4;
   Serial.println("max and min values");
   Serial.println(lux_max);
   Serial.println(lux_min);
-  L1 = lux_min;
+
+  if (estado == 0)
+    L1 = lux_min;
+  else
+    L1 = lux_max;
+
+
   serverMSG[1] = 'r';
   serverMSG[3] = int(L1);
-  serverMSG[4] = (L1-int(L1))*100;
+  serverMSG[4] = (L1 - int(L1)) * 100;
   serverMSG[5] = 0;
-  transmit(serverMSG,address_aux,6);
-  Serial.println(L1);
-/*  serverMSG[2] = 'r';
-  serverMSG[3] = int(L1);
- serverMSG[4] = int(L1-  int( L1)*100);
-serverMSG[5] = 0;
-transmit(serverMSG, address_aux, 6);*/
+  transmit(serverMSG, address_aux, 6);
+  delay(100);
+
+  serverMSG[1] = 'L';
+  serverMSG[3] = int(lux_min);
+  serverMSG[4] = (lux_min - int(lux_min)) * 100;
+  serverMSG[5] = 0;
+  transmit(serverMSG, address_aux, 6);
+  delay(100);
+
+  serverMSG[1] = 'O';
+  serverMSG[3] = int(o1);
+  serverMSG[4] = int((o1 - int(o1)) * 100);
+  serverMSG[5] = 0;
+  transmit(serverMSG, address_aux, 6);
+  delay(100);
+
+  serverMSG[1] = 'o';
+  if (estado == 1)
+    serverMSG[3] = estado;
+  else
+    serverMSG[3] = ZERO;
+  serverMSG[4] = 0;
+
+  transmit(serverMSG, address_aux, 5);
+
+
+
+
+
+  /*  serverMSG[2] = 'r';
+    serverMSG[3] = int(L1);
+    serverMSG[4] = int(L1-  int( L1)*100);
+    serverMSG[5] = 0;
+    transmit(serverMSG, address_aux, 6);*/
 
 }
 
@@ -922,7 +983,7 @@ void iteracao()
   //store data and save for next cycle
   //best_d11[i] = d11_best;
   //best_d12[i] = d12_best;
- // float d1[] = {};
+  // float d1[] = {};
   d1[0] = d11_best;
   d1[1] = d12_best;
   /*
@@ -1094,12 +1155,12 @@ void SerialInputs()
           on = 0;
           break;
         }
-        case 'q':
+      case 'q':
         {
-          centralized = !centralized; 
+          coupled = !coupled;
           break;
         }
-        
+
     }
   }
 }
@@ -1214,10 +1275,11 @@ void controlo(float reference)
   //write to pin pwm, if feedforward is on add that as well
 
 
-if(centralized)
-  pwm = (declive * u) + d1[0] * 255 / 100;
-else 
-pwm = declive * (u+ reference);
+  if (coupled)
+    pwm = (declive * u) + d1[0] * 255 / 100;
+  else
+    pwm = declive * (u + reference);
+
   if (pwm < 0)
     pwm = 0;
   if (pwm > 255)
