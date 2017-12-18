@@ -19,7 +19,10 @@
 #include <sys/time.h>
 #include <fcntl.h>
 
+
+#ifdef __arm__
 #include "pigpio.h"
+#endif
 
 #include <mutex>
 #include <condition_variable>
@@ -43,63 +46,72 @@ int sflag=0;
 
 
 #define NLUMS 2
-#define LISTSIZE 700
-#define SAMPLETIME 1 //in milliseconds
+#define LISTSIZE 1000
+#define SAVEINTERVAL 5 // every 5 * (ARDUINODELAY) ms it saves on the list
 
 class DSys
- {
-   public:
+{
+public:
 
 
-int ocu[NLUMS]={0};
-float lowLum[NLUMS];
-float external[NLUMS];
-float refLum[NLUMS]={20};
-float  energy[NLUMS]={0};
-float  confErr[NLUMS]={0};
+  int ocu[NLUMS]={0};
+  float lowLum[NLUMS];
+  float external[NLUMS];
+  float refLum[NLUMS]={20};
+  float  energy[NLUMS]={0};
+  float  confErr[NLUMS]={0};
 
-int N[NLUMS]={1};
-int Nl[NLUMS]={1};
-float  confVar[NLUMS]={0};
+int dutyCounter[NLUMS]={0};
+int luxCounter[NLUMS]={0};
 
-//flag if stream is on or not
-int streamLux[NLUMS]={ 0 };
-int streamDuty[NLUMS]={ 0 };
+  int N[NLUMS]={1};
+  int Nl[NLUMS]={1};
+  float  confVar[NLUMS]={0};
 
-//flag new information for the stream
-int streamflagLux[NLUMS]={ 0 };
-int streamflagDuty[NLUMS]={ 0 };
-
-//flag new info external
-int flagExternal[NLUMS]={ 0 };
-int flagLowLum[NLUMS]={ 0 };
-int flagRefLum[NLUMS]={ 0 };
-int flagOcu[NLUMS]={ 0 };
-
-std::list<float> lastLux [NLUMS];
-std::list<int> lastDuty [NLUMS];
+  //flag if stream is on or not
+  int streamLux[NLUMS]={ 0 };
+  int streamDuty[NLUMS]={ 0 };
 
 
-//this are list arrays
-std::list<std::chrono::steady_clock::time_point> luxTime [NLUMS];
-std::list<std::chrono::steady_clock::time_point> dutyTime [NLUMS];
+bool isreading = false;
+bool iswriting = false;
 
-//this is a normal array
-std::chrono::steady_clock::time_point lastTimeRecv [NLUMS];
+  //flag new information for the stream
+  int streamflagLux[NLUMS]={ 0 };
+  int streamflagDuty[NLUMS]={ 0 };
+
+  //flag new info external
+  int flagExternal[NLUMS]={ 0 };
+  int flagLowLum[NLUMS]={ 0 };
+  int flagRefLum[NLUMS]={ 0 };
+  int flagOcu[NLUMS]={ 0 };
+
+  std::list<float> lastLux [NLUMS];
+  std::list<int> lastDuty [NLUMS];
+
+
+  //this are list arrays
+  std::list<std::chrono::steady_clock::time_point> luxTime [NLUMS];
+  std::list<std::chrono::steady_clock::time_point> dutyTime [NLUMS];
+
+  //this is a normal array
+  std::chrono::steady_clock::time_point lastTimeRecv [NLUMS];
+
+  std::chrono::steady_clock::time_point lastTimeRecvLux [NLUMS];
 
 
 
 
- std::chrono::steady_clock::time_point start_time;
+  std::chrono::steady_clock::time_point start_time;
 
 
-   DSys (float cl1, float cl2 )
-   {
-     lastLux[0].push_back (cl1);
-     lastLux[1].push_back (cl2);
-     //streamLux=0;
-      //streamDuty=0;
-   }
+  DSys (float cl1, float cl2 )
+  {
+    lastLux[0].push_back (cl1);
+    lastLux[1].push_back (cl2);
+    //streamLux=0;
+    //streamDuty=0;
+  }
 };
 
 
@@ -116,108 +128,108 @@ std::chrono::steady_clock::time_point lastTimeRecv [NLUMS];
 
 static char * timeStamp()
 {
-   static char buf[32];
+  static char buf[32];
 
-   struct timeval now;
-   struct tm tmp;
+  struct timeval now;
+  struct tm tmp;
 
-   gettimeofday(&now, NULL);
+  gettimeofday(&now, NULL);
 
-   localtime_r(&now.tv_sec, &tmp);
-   strftime(buf, sizeof(buf), "%F %T", &tmp);
+  localtime_r(&now.tv_sec, &tmp);
+  strftime(buf, sizeof(buf), "%F %T", &tmp);
 
-   return buf;
+  return buf;
 }
 
 int parse_I2C(int SCL, int SDA)
 {
-    int result=0;
+  int result=0;
 
 
-   static int in_data=0, byte=0, bit=0;
-   static int oldSCL=1, oldSDA=1;
+  static int in_data=0, byte=0, bit=0;
+  static int oldSCL=1, oldSDA=1;
 
-   int xSCL, xSDA;
+  int xSCL, xSDA;
 
-   if (SCL != oldSCL)
-   {
-      oldSCL = SCL;
-      if (SCL) xSCL = SCL_RISING;
-      else     xSCL = SCL_FALLING;
-   }
-   else        xSCL = SCL_STEADY;
+  if (SCL != oldSCL)
+  {
+    oldSCL = SCL;
+    if (SCL) xSCL = SCL_RISING;
+    else     xSCL = SCL_FALLING;
+  }
+  else        xSCL = SCL_STEADY;
 
-   if (SDA != oldSDA)
-   {
-      oldSDA = SDA;
-      if (SDA) xSDA = SDA_RISING;
-      else     xSDA = SDA_FALLING;
-   }
-   else        xSDA = SDA_STEADY;
+  if (SDA != oldSDA)
+  {
+    oldSDA = SDA;
+    if (SDA) xSDA = SDA_RISING;
+    else     xSDA = SDA_FALLING;
+  }
+  else        xSDA = SDA_STEADY;
 
-   switch (xSCL+xSDA)
-   {
-      case SCL_RISING + SDA_RISING:
-      case SCL_RISING + SDA_FALLING:
-      case SCL_RISING + SDA_STEADY:
-         if (in_data)
-         {
-            if (bit++ < 8)
-            {
-               byte <<= 1;
-               byte |= SDA;
-            }
-            else
-            {
-              // printf("%c", byte);//x02
-              // if (SDA) printf("-"); else printf("+");
-               result=byte;
-               bit = 0;
-               byte = 0;
-            }
-         }
-         break;
+  switch (xSCL+xSDA)
+  {
+    case SCL_RISING + SDA_RISING:
+    case SCL_RISING + SDA_FALLING:
+    case SCL_RISING + SDA_STEADY:
+    if (in_data)
+    {
+      if (bit++ < 8)
+      {
+        byte <<= 1;
+        byte |= SDA;
+      }
+      else
+      {
+        // printf("%c", byte);//x02
+        // if (SDA) printf("-"); else printf("+");
+        result=byte;
+        bit = 0;
+        byte = 0;
+      }
+    }
+    break;
 
-      case SCL_FALLING + SDA_RISING:
-         break;
+    case SCL_FALLING + SDA_RISING:
+    break;
 
-      case SCL_FALLING + SDA_FALLING:
-         break;
+    case SCL_FALLING + SDA_FALLING:
+    break;
 
-      case SCL_FALLING + SDA_STEADY:
-         break;
+    case SCL_FALLING + SDA_STEADY:
+    break;
 
-      case SCL_STEADY + SDA_RISING:
-         if (SCL)
-         {
-            in_data = 0;
-            byte = 0;
-            bit = 0;
+    case SCL_STEADY + SDA_RISING:
+    if (SCL)
+    {
+      in_data = 0;
+      byte = 0;
+      bit = 0;
 
-          //  printf("]\n"); // stop
-            result= -2;
-            fflush(NULL);
-         }
-         break;
+      //  printf("]\n"); // stop
+      result= -2;
+      fflush(NULL);
+    }
+    break;
 
-      case SCL_STEADY + SDA_FALLING:
-         if (SCL)
-         {
-            in_data = 1;
-            byte = 0;
-            bit = 0;
+    case SCL_STEADY + SDA_FALLING:
+    if (SCL)
+    {
+      in_data = 1;
+      byte = 0;
+      bit = 0;
 
-          //  printf("["); // start
-              result= -1;
-         }
-         break;
+      //  printf("["); // start
+      result= -1;
+    }
+    break;
 
-      case SCL_STEADY + SDA_STEADY:
-         break;
+    case SCL_STEADY + SDA_STEADY:
+    break;
 
-   }
+  }
 
-   return result;
+  return result;
 }
 
 
@@ -225,70 +237,70 @@ int parse_I2C(int SCL, int SDA)
 
 std::list<int> InsertDuty(std::list<int> list, int value)
 {
-list.push_back (value);
+  list.push_back (value);
 
-if(list.size()>LISTSIZE)
-list.pop_front();
+  if(list.size()>LISTSIZE)
+  list.pop_front();
 
-return list;
+  return list;
 }
 
 std::list<std::chrono::steady_clock::time_point> InsertTime(std::list<std::chrono::steady_clock::time_point> list)
 {
-list.push_back (std::chrono::steady_clock::now());
+  list.push_back (std::chrono::steady_clock::now());
 
-if(list.size()>LISTSIZE)
-list.pop_front();
+  if(list.size()>LISTSIZE)
+  list.pop_front();
 
-return list;
+  return list;
 }
 
 
 std::list<float> InsertLux(std::list<float> list, float value)
 {
-list.push_back (value);
+  list.push_back (value);
 
-if(list.size()>LISTSIZE)
-list.pop_front();
+  if(list.size()>LISTSIZE)
+  list.pop_front();
 
-return list;
+  return list;
 }
 
 
 float getSysPower(DSys* d)
 {
-float aux=0;
+  float aux=0;
 
-for (int i = 0; i < NLUMS; i++) {
+  for (int i = 0; i < NLUMS; i++) {
 
-aux+=d->lastDuty[i].back() / (float) 255;
-}
+    aux+=d->lastDuty[i].back() / (float) 255;
+  }
 
 
-return aux;
+  return aux;
 }
 
 
 float getSysEnergy(DSys* d)
 {
-float aux=0;
+  float aux=0;
 
   for (int i = 0; i < NLUMS; i++) {
 
-  aux+=d->energy[i];
+    aux+=d->energy[i];
   }
 
-return aux;
+  return aux;
 }
 
 float getSysConfErr(DSys* d)
 {
   float aux=0;
 
-    for (int i = 0; i < NLUMS; i++) {
+  for (int i = 0; i < NLUMS; i++) {
 
-    aux+=d->confErr[i];
-    }
+    aux+=d->confErr[i]/d->N[i];
+  }
 
   return aux;
 }
@@ -297,28 +309,28 @@ float getSysConfVar(DSys* d)
 {
   float aux=0;
 
-    for (int i = 0; i < NLUMS; i++) {
+  for (int i = 0; i < NLUMS; i++) {
 
-    aux+=d->confVar[i];
-    }
+    aux+=d->confVar[i]/d->Nl[i];
+  }
 
   return aux;
 }
 
-void SerialSend(byte * cmd)
+void SerialSend(std::string cmd)
 {
-  //if(sflag==1)   return;
+  if(sflag==0)   return;
 
-   std::ostringstream os;
- os << cmd;
-     async_write(sp, buffer(os.str()),
-        [&](const boost::system::error_code &ec, std::size_t length){
+std::cout << "MANDOU:" << cmd;
 
-std::cout << "Message successfully sent to arduino" << '\n';
+  async_write(sp, buffer(cmd),
+  [&](const boost::system::error_code &ec, std::size_t length){
 
-        });
+    std::cout << "Message successfully sent to arduino" << '\n';
 
-std::cout << "MANDARIA COMANDO PARA O SERIAL" << '\n';
+  });
+
+
 
 }
 
@@ -326,8 +338,8 @@ std::cout << "MANDARIA COMANDO PARA O SERIAL" << '\n';
 
 float doubleInt2Float(int i1,int i2)
 {
-if(i1==200) i1=0;
-if(i2==200) i2=0;
+  if(i1==200) i1=0;
+  if(i2==200) i2=0;
 
   std::string s1 = std::to_string(i1);
   s1+="." +std::to_string(i2);
@@ -345,9 +357,12 @@ void serialLoop(DSys*d)
 
 }
 
+#ifdef __arm__
+
+
 void i2cStuff(DSys*d)
 {
-std::cout << "i2cStuff " << '\n';
+  std::cout << "i2cStuff " << '\n';
 
   //i2c stuff
   int gSCL, gSDA, SCL, SDA, xSCL;
@@ -361,13 +376,13 @@ std::cout << "i2cStuff " << '\n';
   int result;
   int k=0;
 
-     gSCL = atoi("3");
-     gSDA = atoi("2");
+  gSCL = atoi("3");
+  gSDA = atoi("2");
 
-     bSCL = 1<<gSCL;
-     bSDA = 1<<gSDA;
+  bSCL = 1<<gSCL;
+  bSDA = 1<<gSDA;
 
-     bI2C = bSCL | bSDA;
+  bI2C = bSCL | bSDA;
 
 
   SCL = 1;
@@ -376,207 +391,280 @@ std::cout << "i2cStuff " << '\n';
 
   while ((r=read(STDIN_FILENO, &report, RS)) == RS)
   {
-     report.level &= bI2C;
 
-     if (report.level != level)
-     {
-        changed = report.level ^ level;
+    report.level &= bI2C;
 
-        level = report.level;
+    if (report.level != level)
+    {
+      changed = report.level ^ level;
 
-        if (level & bSCL) SCL = 1; else SCL = 0;
-        if (level & bSDA) SDA = 1; else SDA = 0;
+      level = report.level;
 
-    result=    parse_I2C(SCL, SDA);
-if(result!=0)
+      if (level & bSCL) SCL = 1; else SCL = 0;
+      if (level & bSDA) SDA = 1; else SDA = 0;
 
-if(result==-1)
-{k=0;
+      result=    parse_I2C(SCL, SDA);
+      if(result!=0)
 
-}else if (result==-2)
-{
+      if(result==-1)
+      {k=0;
 
+      }else if (result==-2)
+      {
 
-/*
-  for (int i = 0; i <6; i++)
-  std::cout << buffer[i]<<" ";
-std::cout  << '\n';*/
+        std::unique_lock<std::mutex> lk(mut);
+        while (d->isreading==true)   cvi2c.wait(lk);
+        d->iswriting=true;
 
-int id = buffer[3]-1;
-int id2= buffer[3]-'b';//converte em 0 ou 1
-float aux=0;
-if(id>=0 && id<NLUMS)
-{
+        int id = buffer[3]-1;
+        int id2= buffer[3]-'b';//converte em 0 ou 1
+        float aux=0;
+        if(id>=0 && id<NLUMS)
+        {
 
-if(buffer[1]=='$')
-{
-if(buffer[2]=='d')//adiciona ao duty cycle
-{
-//  std::cout << "ADICIONA DUTY" << '\n';
-aux =doubleInt2Float(buffer[4],buffer[5]);
-int v= aux*255/100;
+          if(buffer[1]=='$')
+          {
+            if(buffer[2]=='d')//adiciona ao duty cycle
+            {
+              //converte percentagem em duty
+              aux =doubleInt2Float(buffer[4],buffer[5]);
+              int v= aux*255/100;
 
-d->lastDuty[id] = InsertDuty(d->lastDuty[id],v);
 
-//initializes times in the first time
-if(d->energy[id]==0)
-d->lastTimeRecv[id] = std::chrono::steady_clock::now();
+              if(d->dutyCounter[id]==SAVEINTERVAL)
+              {
+                //insere novo duty cycle
+                d->lastDuty[id] = InsertDuty(d->lastDuty[id],v);
 
+                //insere novo time
+                d->dutyTime[id] = InsertTime(d->dutyTime[id]);
 
-//gets time interval
-std::chrono::duration<double,std::milli> elapsed(std::chrono::steady_clock::now() - d->lastTimeRecv[id]);
 
-//sets new last time
-d->lastTimeRecv[id] = std::chrono::steady_clock::now();
+                std::chrono::duration<double,std::milli> elapsed1(std::chrono::steady_clock::now() - d->dutyTime[id].front());
+              //  std::cout << "TEMPO ULTIME" <<elapsed1.count() << '\n';
 
+                while(elapsed1.count()>60000)
+                {
+                  //std::cout << "apaga" << '\n';
 
+                  d->lastDuty[id].pop_front ();
+                  d->dutyTime[id].pop_front();
 
-//std::cout << v << "\n";
-std::string s = std::to_string(elapsed.count());
+                  elapsed1=std::chrono::steady_clock::now() - d->dutyTime[id].front();
+                }
 
-//std::cout << "TIME PRINTS" << s << "ms\n";
 
-//std::cout << (v/(float)255) <<"VERY NICE"<<(elapsed.count()) <<'\n';
-//setEnergu
-d->energy[id]+=(v/(float)255)*(elapsed.count()/1000);
 
+                d->dutyCounter[id]=0;
+              }
+              d->dutyCounter[id]++;
 
-}else if(buffer[2]=='1')//adiciona ao lux
-{
-//  std::cout << "ADICIONA LUX" << '\n';
-  aux =doubleInt2Float(buffer[4],buffer[5]);
-  d->lastLux[id] = InsertLux(d->lastLux[id],aux);
 
-//calcs confErr
-float confort= d->refLum[id]-aux;
-if(confort<0)confort=0;
+              //define como available para streamar
+              d->streamflagDuty[id] = 1;
 
+              //initializes times in the first time
+              if(d->energy[id]==0)
+              d->lastTimeRecv[id] = std::chrono::steady_clock::now();
 
-d->confErr[id]=(d->confErr[id] * d->N[id]+aux)/(d->N[id]+1);
-d->N[id]++;
 
+              //gets time interval
+              std::chrono::duration<double,std::milli> elapsed(std::chrono::steady_clock::now() - d->lastTimeRecv[id]);
 
-//DA PARA CALCULAR VARIANCIA
-if(d->lastLux[id].size()>2)
-{
-  //NIGGER
+              //sets new last time
+              d->lastTimeRecv[id] = std::chrono::steady_clock::now();
 
-  //std::cout << d->lastLux[id].back() << '\n';
 
-  //std::cout << "PRINT LISTA" << '\n';
-float auxer=0;
-int n=0;
-//iterador na posicao zero da estranho
-  for (std::list<float>::iterator it =  d->lastLux[id].end(); n<4; --it){
 
-  //  std::cout << n << '\n';
-float ola = *it;
+              //std::cout << v << "\n";
+              std::string s = std::to_string(elapsed.count());
 
+              //std::cout << "TIME PRINTS" << s << "ms\n";
 
+              //std::cout << (v/(float)255) <<"VERY NICE"<<(elapsed.count()) <<'\n';
+              //setEnergu
+              d->energy[id]+=(v/(float)255)*(elapsed.count()/1000);
 
-//faz cena dentro do modulo
 
-if(n==2)
-auxer-=2*ola;
-else if(n>0)
-auxer+=ola;
+            }else if(buffer[2]=='1')//adiciona ao lux
+            {
+              //converte em float
+              aux =doubleInt2Float(buffer[4],buffer[5]);
 
+              if(d->luxCounter[id]==SAVEINTERVAL)
+              {
+                d->lastLux[id] = InsertLux(d->lastLux[id],aux);
 
-    n++;
-}
+                //insere novo time
+                d->luxTime[id] = InsertTime(d->luxTime[id]);
 
-if(auxer<0)
-{
-  auxer*=-1;
-}
 
-auxer/=SAMPLETIME;
+                std::chrono::duration<double,std::milli> elapsed1(std::chrono::steady_clock::now() - d->luxTime[id].front());
+                //  std::cout << "TEMPO ULTIME" <<elapsed1.count() << '\n';
 
-d->confVar[id]=(d->confVar[id] *  d->Nl[id]  +auxer)/(d->Nl[id]+1);
-d->Nl[id]++;
+                while(elapsed1.count()>60000)
+                {
+                  //std::cout << "apaga" << '\n';
 
-//std::cout << auxer << '\n';
-}
+                  d->lastLux[id].pop_front ();
+                  d->luxTime[id].pop_front();
 
+                  elapsed1=std::chrono::steady_clock::now() - d->luxTime[id].front();
+                }
 
+                d->luxCounter[id]=0;
+              }
+            d->  luxCounter[id]++;
 
 
 
+              d->streamflagLux[id] = 1;
+              //calcs confErr
+              float confort= d->refLum[id]-aux;
 
-//std::cout << "CONF ERR IS " <<d->confErr[id] << '\n';
+              if(confort<0)confort=0;
 
-}
-else if(buffer[2]=='L')
-{
-std::cout << "RECEBI O LOW LUMMMMMMMMMMMM" << '\n';
-d->flagLowLum[id]=1;
-d-> lowLum[id]=doubleInt2Float(buffer[4],buffer[5]);
 
 
-}
-else if(buffer[2]=='o')
-{
-std::cout << "RECEBI O OCUPANCIA" << '\n';
+              d->confErr[id]=d->confErr[id] +confort;
+              d->N[id]++;
 
-d->flagOcu[id]=1;
 
-if(buffer[4]==1)
-d->ocu[id]=1;
-else
-d->ocu[id]=0;
+              //DA PARA CALCULAR VARIANCIA
+              if(d->lastLux[id].size()>2)
+              {
 
 
+                //std::cout << d->lastLux[id].back() << '\n';
 
-}else if(buffer[2]=='O')
-{
-std::cout << "RECEBI O EXTERNAL" << '\n';
-//flag new info external
+                //std::cout << "PRINT LISTA" << '\n';
+                float auxer=0;
+                int n=0;
+                //iterador na posicao zero da estranho
+                for (std::list<float>::iterator it =  d->lastLux[id].end(); n<4; --it){
 
+                  //  std::cout << n << '\n';
+                  float ola = *it;
+                  //faz cena dentro do modulo
 
-std::cout << doubleInt2Float(buffer[4],buffer[5]) << '\n';
-d->flagExternal[id]=1;
-d-> external[id]=doubleInt2Float(buffer[4],buffer[5]);
+                  if(n==2)
+                  auxer-=2*ola;
+                  else if(n>0)
+                  auxer+=ola;
 
-}else if(buffer[2]=='r')
-{
-std::cout << "RECEBI O REFERENCE" << '\n';
-d->flagRefLum[id]=1;
-d-> refLum[id]=doubleInt2Float(buffer[4],buffer[5]);
-}
 
-}else if(buffer[1]=='R')
-{
-  std::cout << "Time Resetted" << '\n';
-d->start_time =  std::chrono::steady_clock::now();
+                  n++;
+                }
 
-}
+                if(auxer<0)
+                {
+                  auxer*=-1;
+                }
 
-/*
-  std::cout << "ADDED VALUE TO" << id<< '\n';
-  d->lastDuty[id] = InsertDuty(d->lastDuty[id],1);
-  d->dutyTime[id] = InsertTime(d->dutyTime[id]);
+//std::cout << "VAR " <<auxer<< '\n';
 
-*/
+                //initializes times in the first time
+                if(d->confVar[id]==0)
+                d->lastTimeRecvLux[id] = std::chrono::steady_clock::now();
 
-}
 
-  //
+                //gets time interval
+                std::chrono::duration<double,std::milli> elapsed(std::chrono::steady_clock::now() - d->lastTimeRecvLux[id]);
 
+                //sets new last time
+                d->lastTimeRecvLux[id] = std::chrono::steady_clock::now();
 
-}
+//std::cout << "TEMPO " << elapsed.count()<< '\n';
 
-else
-{
-  buffer[k]=result;
-  k++;
-}
+      auxer/=((elapsed.count()/1000)*(elapsed.count()/1000));
 
+                d->confVar[id]=(d->confVar[id]  +auxer);
+                d->Nl[id]++;
 
-     }
+                //std::cout << auxer << '\n';
+              }
+
+
+
+
+
+
+              //std::cout << "CONF ERR IS " <<d->confErr[id] << '\n';
+
+            }
+            else if(buffer[2]=='L')
+            {
+              std::cout << "RECEBI O LOW LUMMMMMMMMMMMM" << '\n';
+              d->flagLowLum[id]=1;
+              d-> lowLum[id]=doubleInt2Float(buffer[4],buffer[5]);
+
+
+            }
+            else if(buffer[2]=='o')
+            {
+              std::cout << "RECEBI O OCUPANCIA" << '\n';
+
+              d->flagOcu[id]=1;
+              std::cout << d->flagOcu[id] << '\n';
+              if(buffer[4]==1)
+              d->ocu[id]=1;
+              else
+              d->ocu[id]=0;
+
+
+
+            }else if(buffer[2]=='O')
+            {
+              std::cout << "RECEBI O EXTERNAL" << '\n';
+              //flag new info external
+
+
+              std::cout << doubleInt2Float(buffer[4],buffer[5]) << '\n';
+              d->flagExternal[id]=1;
+              d-> external[id]=doubleInt2Float(buffer[4],buffer[5]);
+
+            }else if(buffer[2]=='r')
+            {
+              std::cout << "RECEBI O REFERENCE" << '\n';
+              d->flagRefLum[id]=1;
+              d-> refLum[id]=doubleInt2Float(buffer[4],buffer[5]);
+            }
+
+          }else if(buffer[1]=='R')
+          {
+            std::cout << "Time Resetted" << '\n';
+            d->start_time =  std::chrono::steady_clock::now();
+
+          }
+
+          /*
+          std::cout << "ADDED VALUE TO" << id<< '\n';
+          d->lastDuty[id] = InsertDuty(d->lastDuty[id],1);
+          d->dutyTime[id] = InsertTime(d->dutyTime[id]);
+
+          */
+
+        }
+        d->iswriting = false;
+
+        cvstream.notify_one();
+        lk.unlock();
+
+
+      }
+
+      else
+      {
+        buffer[k]=result;
+        k++;
+      }
+
+
+    }
   }
   return;
 }
-
+#endif
 
 
 
@@ -584,589 +672,629 @@ else
 
 std::string CheckCommand(char* cmd,DSys* d) {
 
+std::string sendmsg;
 
-    //esta a pedir a luminosidade
-    if (cmd[0] == 'g' && cmd[2] == 'l') {
+  //esta a pedir a luminosidade
+  if (cmd[0] == 'g' && cmd[2] == 'l') {
 
 
-        int id = atoi(&cmd[4]);
+    int id = atoi(&cmd[4]);
 
-        if (id < NLUMS) {
-          //retorna ultima luminosidade recebida
-return "l " + std::to_string(id)  + " " +std::to_string(d->lastLux[id].back())  + "\n";
-        }
+    if (id < NLUMS) {
+      //retorna ultima luminosidade recebida
+      return "l " + std::to_string(id)  + " " +std::to_string(d->lastLux[id].back())  + "\n";
+    }
+
+  }
+  else if (cmd[0] == 'g' && cmd[2] == 'd') {//esta a pedir o duty cycle
+
+
+    int id = atoi(&cmd[4]);
+
+    if (id < NLUMS) {
+      //retorna ultimo dutycylce recebido
+      return "d " + std::to_string(id)  + " " +std::to_string(d->lastDuty[id].back())  + "\n";
+    }
+
+
+  } else if (cmd[0] == 'g' && cmd[2] == 'o') {//esta a pedir ocupacao
+
+
+    int id = atoi(&cmd[4]);
+
+    if (id < NLUMS) {
+
+      //prints ocupation
+      std::cout << "o " + std::to_string(id)  + " " +std::to_string(d->ocu[id]) << '\n';
+
+    /*  sendmsg= "go";
+      sendmsg+= id+1+'a';
+        sendmsg+='\n';
+
+      SerialSend(sendmsg);*/
+      return "o " + std::to_string(id)  + " " +std::to_string(d->ocu[id]) + "\n";
+    }
+
+  }else if(cmd[0] == 's'){
+
+  int id = atoi(&cmd[2]);
+  int val = atoi(&cmd[4]);
+
+  sendmsg= "s";
+  sendmsg+= val+'a';
+  sendmsg+=id+1+'a';
+    sendmsg+='\n';
+
+  SerialSend(sendmsg);
+
+
+  } else if (cmd[0] == 'g' && cmd[2] == 'L') {//esta a pedir lower bound L
+
+
+    int id = atoi(&cmd[4]);
+
+    if (id < NLUMS) {
+
+      //prints ocupation
+      std::cout << "L " + std::to_string(id)  + " " +std::to_string(d->lowLum[id])  + "\n";
+
+      //sends byte array via serial
+      /*sendmsg= "gL";
+      sendmsg+= id+1+'a';
+      sendmsg+='\n';
+
+      SerialSend(sendmsg);*/
+      return  "L " + std::to_string(id)  + " " +std::to_string(d->lowLum[id])  + "\n";
+    }
+
+  } else if (cmd[0] == 'g' && cmd[2] == 'O') {//esta a pedir external lumminance
+
+
+    int id = atoi(&cmd[4]);
+
+    if (id < NLUMS) {
+
+      //prints ocupation
+      std::cout << "O " + std::to_string(id)  + " " +std::to_string(d->external[id])  + "\n";
+
+      //sends byte array via serial
+      //byte cmdserial[4]={'g','O',(byte)(id+1+'a'),'\n'};
+    //  SerialSend((byte*)cmdserial);
+      return "O " + std::to_string(id)  + " " +std::to_string(d->external[id])  + "\n";
 
     }
 
-    else if (cmd[0] == 'g' && cmd[2] == 'd') {//esta a pedir o duty cycle
+  }else if (cmd[0] == 'g' && cmd[2] == 'r') {//esta a pedir reference lumminance
 
 
-        int id = atoi(&cmd[4]);
+    int id = atoi(&cmd[4]);
 
-        if (id < NLUMS) {
-          //retorna ultimo dutycylce recebido
-return "d " + std::to_string(id)  + " " +std::to_string(d->lastDuty[id].back())  + "\n";
-        }
+    if (id < NLUMS) {
 
+      //prints ocupation
+      std::cout << "r " + std::to_string(id)  + " " +std::to_string(d->refLum[id])  + "\n";
 
-    } else if (cmd[0] == 'g' && cmd[2] == 'o') {//esta a pedir ocupacao
-
-
-        int id = atoi(&cmd[4]);
-
-        if (id < NLUMS) {
-
-//prints ocupation
-std::cout << "o " + std::to_string(id)  + " " +std::to_string(d->ocu[id]) << '\n';
-
-//sends byte array via serial
-byte cmdserial[4]={'g','o',(byte)(id+1+'a'),'\n'};
-SerialSend((byte*)cmdserial);
-return "";
-        }
-
-    } else if (cmd[0] == 'g' && cmd[2] == 'L') {//esta a pedir lower bound L
+      //sends byte array via serial
 
 
-        int id = atoi(&cmd[4]);
-
-        if (id < NLUMS) {
-
-          //prints ocupation
-          std::cout << "L " + std::to_string(id)  + " " +std::to_string(d->lowLum[id])  + "\n";
-
-          //sends byte array via serial
-          byte cmdserial[4]={'g','L',(byte)(id+1+'a'),'\n'};
-          SerialSend((byte*)cmdserial);
-          return "";
-        }
-
-    } else if (cmd[0] == 'g' && cmd[2] == 'O') {//esta a pedir external lumminance
-
-
-        int id = atoi(&cmd[4]);
-
-        if (id < NLUMS) {
-
-//prints ocupation
-std::cout << "O " + std::to_string(id)  + " " +std::to_string(d->external[id])  + "\n";
-
-//sends byte array via serial
-byte cmdserial[4]={'g','O',(byte)(id+1+'a'),'\n'};
-SerialSend((byte*)cmdserial);
-return "";
-
-        }
-
-}else if (cmd[0] == 'g' && cmd[2] == 'r') {//esta a pedir reference lumminance
-
-
-        int id = atoi(&cmd[4]);
-
-        if (id < NLUMS) {
-
-//prints ocupation
-std::cout << "r " + std::to_string(id)  + " " +std::to_string(d->refLum[id])  + "\n";
-
-//sends byte array via serial
-byte cmdserial[4]={'g','r',(byte)(id+1+'a'),'\n'};
-SerialSend((byte*)cmdserial);
-return "";
-        }
-
-    } else if (cmd[0] == 'g' && cmd[2] == 'p' && cmd[4] == 'T') {//total power comsumption
-
-
-
-return "p T " + std::to_string(getSysPower(d))  + " Watts\n";
-
-    } else if (cmd[0] == 'g' && cmd[2] == 'p') {//instataneous power consumption
-
-
-        int id = atoi(&cmd[4]);
-
-        if (id < NLUMS) {
-            return "p " + std::to_string(id)  + " " +std::to_string(d->lastDuty[id].back() / (float) 255)  + " Watts\n";
-                    }
-
-
-
-
-    }else if (cmd[0] == 'g' && cmd[2] == 'e' && cmd[4] == 'T') {//total energy
-
-
-return "e T " + std::to_string(getSysEnergy(d))  + " Joules\n";
-
-
-    }else if (cmd[0] == 'g' && cmd[2] == 'e') {//instataneous power consumption
-
-
-        int id = atoi(&cmd[4]);
-
-        if (id < NLUMS) {
-
-
-            return "e " + std::to_string(id)  + " " +std::to_string(d->energy[id])  + " Joules\n";
-                    }
-
-
+      return "r " + std::to_string(id)  + " " +std::to_string(d->refLum[id])  + "\n";;
     }
 
-    else if (cmd[0] == 'g' && cmd[2] == 'c' && cmd[4] == 'T') {//current energy
-
-return "c T " + std::to_string(getSysConfErr(d))  + " lux\n";
+  } else if (cmd[0] == 'g' && cmd[2] == 'p' && cmd[4] == 'T') {//total power comsumption
 
 
 
-    } else if (cmd[0] == 'g' && cmd[2] == 'c') {//instataneous power consumption
+    return "p T " + std::to_string(getSysPower(d))  + " Watts\n";
+
+  } else if (cmd[0] == 'g' && cmd[2] == 'p') {//instataneous power consumption
 
 
-        int id = atoi(&cmd[4]);
+    int id = atoi(&cmd[4]);
 
-        if (id < NLUMS) {
-
-            return "c " + std::to_string(id)  + " " +std::to_string(d->confErr[id])  + " lux\n";
-                    }
-
-
-
-    }else if (cmd[0] == 'g' && cmd[2] == 'v' && cmd[4] == 'T') {//current energy
-
-return "v T " + std::to_string(getSysConfVar(d))  + " lux/s^2\n";
+    if (id < NLUMS) {
+      return "p " + std::to_string(id)  + " " +std::to_string(d->lastDuty[id].back() / (float) 255)  + " Watts\n";
+    }
 
 
 
-    }else if (cmd[0] == 'g' && cmd[2] == 'v') {//instataneous power consumption
+
+  }else if (cmd[0] == 'g' && cmd[2] == 'e' && cmd[4] == 'T') {//total energy
 
 
-        int id = atoi(&cmd[4]);
-
-        if (id < NLUMS) {
-
-            return "v " + std::to_string(id)  + " " +std::to_string(d->confVar[id])  + " lux/s^2\n";
-                    }
+    return "e T " + std::to_string(getSysEnergy(d))  + " Joules\n";
 
 
-
-    }else if (cmd[0] == 'g' && cmd[2] == 't' && cmd[4] == 'T') {//current energy
-
+  }else if (cmd[0] == 'g' && cmd[2] == 'e') {//instataneous power consumption
 
 
-std::chrono::duration<double,std::milli> elapsed(std::chrono::steady_clock::now()-d->start_time);
+    int id = atoi(&cmd[4]);
+
+    if (id < NLUMS) {
 
 
-
-return "t T " + std::to_string(NLUMS*(elapsed.count()/1000))  + " seconds\n";
-
-
-}else if (cmd[0] == 'g' && cmd[2] == 't') {//instataneous power consumption
+      return "e " + std::to_string(id)  + " " +std::to_string(d->energy[id])  + " Joules\n";
+    }
 
 
-        int id = atoi(&cmd[4]);
+  }
 
-        if (id < NLUMS) {
+  else if (cmd[0] == 'g' && cmd[2] == 'c' && cmd[4] == 'T') {//current energy
 
-std::chrono::duration<double,std::milli> elapsed(std::chrono::steady_clock::now()-d->start_time);
-
-            return "t " + std::to_string(id)  + " " + std::to_string((elapsed.count()/1000))  + " seconds\n";
-                    }
+    return "c T " + std::to_string(getSysConfErr(d))  + " lux\n";
 
 
 
-    }else if (cmd[0] == 's') {//set ocuppancy
+  } else if (cmd[0] == 'g' && cmd[2] == 'c') {//instataneous power consumption
 
 
-        int id = atoi(&cmd[2]);
-        int val = atoi(&cmd[4]);
+    int id = atoi(&cmd[4]);
+
+    if (id < NLUMS) {
+
+      return "c " + std::to_string(id)  + " " +std::to_string(d->confErr[id]/d->N[id])  + " lux\n";
+    }
 
 
-        byte cmdserial[4]={'s',(byte)(val+'a'),(byte)(id+1+'a'),'\n'};
-        SerialSend((byte*)cmdserial);
+
+  }else if (cmd[0] == 'g' && cmd[2] == 'v' && cmd[4] == 'T') {//current energy
+
+    return "v T " + std::to_string(getSysConfVar(d))  + " lux/s^2\n";
 
 
-        //acknowledge
-        return "ack\n";
-        //std::cout << "ack" << std::endl;
+
+  }else if (cmd[0] == 'g' && cmd[2] == 'v') {//instataneous power consumption
 
 
-    }else if (cmd[0] == 'r') {//send system restart
+    int id = atoi(&cmd[4]);
+
+    if (id < NLUMS) {
+
+      return "v " + std::to_string(id)  + " " +std::to_string(d->confVar[id]/d->Nl[id])  + " lux/s^2\n";
+    }
 
 
-        //send command
-        SerialSend((byte *)"rst\n");
 
-        //acknowledge
-        return "ack\n";
+  }else if (cmd[0] == 'g' && cmd[2] == 't' && cmd[4] == 'T') {//current energy
 
 
-    }else if (cmd[0] == 'b' && cmd[2] == 'd') {//last minute resume
+
+    std::chrono::duration<double,std::milli> elapsed(std::chrono::steady_clock::now()-d->start_time);
 
 
-        int id = atoi(&cmd[4]);
-        //vai buscar a uma lista estes valores
 
-        if (id < NLUMS) {
+    return "t T " + std::to_string(NLUMS*(elapsed.count()/1000))  + " seconds\n";
 
-          std::string resume="b d " + std::to_string(id)+" ";
 
-          std::cout << "PRINT DA LISTA" << '\n';
-                    for (auto v : d->lastDuty[id])
-                    {
-//std::cout << v << "\n";
-resume+=std::to_string(v)+", ";
+  }else if (cmd[0] == 'g' && cmd[2] == 't') {//instataneous power consumption
 
-          }
-          resume+="\n";
-                std::cout << resume << '\n';
 
-//PRINT DO TEMPO
+    int id = atoi(&cmd[4]);
 
-std::cout << "PRINT DA LISTA" << '\n';
-          for (auto v : d->dutyTime[id])
-          {
+    if (id < NLUMS) {
 
- std::chrono::steady_clock::time_point end_time = std::chrono::steady_clock::now();
+      std::chrono::duration<double,std::milli> elapsed(std::chrono::steady_clock::now()-d->start_time);
 
-std::chrono::duration<double,std::milli> elapsed(end_time - v);
+      return "t " + std::to_string(id)  + " " + std::to_string((elapsed.count()/1000))  + " seconds\n";
+    }
 
-//std::cout << v << "\n";
-std::string s = std::to_string(elapsed.count()/1000);
-resume+=s+", ";
 
-}
-resume+="\n";
+
+  }else if (cmd[0] == 'r') {//send system restart
+
+
+    //send command
+    SerialSend("rst\n");
+
+    //acknowledge
+    return "ack\n";
+
+
+  }else if (cmd[0] == 'b' && cmd[2] == 'd') {//last minute resume
+
+
+    int id = atoi(&cmd[4]);
+    //vai buscar a uma lista estes valores
+
+    if (id < NLUMS) {
+
+      std::string resume="b d " + std::to_string(id)+" ";
+
+      std::cout << "PRINT DA LISTA" << '\n';
+      for (auto v : d->lastDuty[id])
+      {
+        //std::cout << v << "\n";
+        resume+=std::to_string(v)+", ";
+
+      }
+      resume+="\n";
       std::cout << resume << '\n';
 
+      //PRINT DO TEMPO
 
-      //RETURN IThbng
+/*
+      std::cout << "PRINT DO TEMPO" << '\n';
+      resume="";
+      for (auto v : d->dutyTime[id])
+      {
+
+        std::chrono::steady_clock::time_point end_time = std::chrono::steady_clock::now();
+
+        std::chrono::duration<double,std::milli> elapsed(end_time - v);
+
+        //std::cout << v << "\n";
+        std::string s = std::to_string(elapsed.count()/1000);
+        resume+=s+", ";
+
+      }
+      resume+="\n";
+      std::cout << resume << '\n';
+*/
 
 
-            //get elements of list
-              return resume;
 
 
-        }
-
-    }else if (cmd[0] == 'b' && cmd[2] == 'l') {//last minute resume
-
-
-        int id = atoi(&cmd[4]);
-        //vai buscar a uma lista estes valores
-
-        if (id < NLUMS) {
+      //get elements of list
+      return resume;
 
 
+    }
 
-          std::string resume="b l " + std::to_string(id)+" ";
+  }else if (cmd[0] == 'b' && cmd[2] == 'l') {//last minute resume
 
-          std::cout << "PRINT DA LISTA" << '\n';
-                    for (auto v : d->lastLux[id])
-                    {
+
+    int id = atoi(&cmd[4]);
+    //vai buscar a uma lista estes valores
+
+    if (id < NLUMS) {
+
+
+
+      std::string resume="b l " + std::to_string(id)+" ";
+std::cout << "Tam Luxs: "<< d->lastLux[id].size() << '\n';
+      std::cout << "PRINT DA LISTA" << '\n';
+      for (auto v : d->lastLux[id])
+      {
         //std::cout << v << "\n";
         resume+=std::to_string(v)+", ";
 
 
-       }
-       resume+="\n";
-       std::cout << resume << '\n';
-            //get elements of list
-              return resume;
-        }
+      }
+      resume+="\n";
+      std::cout << resume << '\n';
+      //get elements of list
 
-    }else if (cmd[0] == 'c' && cmd[2] == 'l') {//stream l
+std::cout << "Tam Luxs: "<< d->lastLux[id].size() << '\n';
 
+      return resume;
+    }
 
-        int id = atoi(&cmd[4]);
-        //vai buscar a uma lista estes valores
-
-        if (id < NLUMS) {
-
-            ///START STREAM LUM
-
-std::cout << "Stream Started"<< id << '\n';
-
-          d->streamLux[id]=1;
-          return "Stream luxs started" + std::to_string(id)+"\n";
-        }
-
-    }else if (cmd[0] == 'c' && cmd[2] == 'd') {//stop stream duty
+  }else if (cmd[0] == 'c' && cmd[2] == 'l') {//stream l
 
 
-        int id = atoi(&cmd[4]);
-        //vai buscar a uma lista estes valores
+    int id = atoi(&cmd[4]);
+    //vai buscar a uma lista estes valores
 
-        if (id < NLUMS) {
+    if (id < NLUMS) {
 
-            ///START STREAM DUTY
-            d->streamDuty[id]=1;
-            return "Stream duty started" + std::to_string(id)+"\n";
+      ///START STREAM LUM
 
-            }
-        }
+      std::cout << "Stream Started"<< id << '\n';
 
-    else if (cmd[0] == 'd' && cmd[2] == 'l') {//stop stream l
+      d->streamLux[id]=1;
+      return "Stream luxs started" + std::to_string(id)+"\n";
+    }
 
-
-        int id = atoi(&cmd[4]);
-        //vai buscar a uma lista estes valores
-
-        if (id < NLUMS) {
-
-            ///STOP STREAM LUM
-            d->streamLux[id]=0;
-            return "ack\n";
-
-        }
-
-    }else if (cmd[0] == 'd' && cmd[2] == 'd') {//last minute resume
+  }else if (cmd[0] == 'c' && cmd[2] == 'd') {//stop stream duty
 
 
-        int id = atoi(&cmd[4]);
-        //vai buscar a uma lista estes valores
+    int id = atoi(&cmd[4]);
+    //vai buscar a uma lista estes valores
 
-        if (id < NLUMS) {
+    if (id < NLUMS) {
 
-            ///STOP STREAM DUTY
-            d->streamDuty[id]=0;
-            return "ack\n";
-        }
-    }//DEBUG STUFF
-    else if (cmd[0] == 'z' && cmd[1] == 'd') {//last minute resume
+      ///START STREAM DUTY
+      d->streamDuty[id]=1;
+      return "Stream duty started" + std::to_string(id)+"\n";
 
-std::cout << "VALOR ADICIONADODUTY" << '\n';
+    }
+  }
+
+  else if (cmd[0] == 'd' && cmd[2] == 'l') {//stop stream l
+
+
+    int id = atoi(&cmd[4]);
+    //vai buscar a uma lista estes valores
+
+    if (id < NLUMS) {
+
+      ///STOP STREAM LUM
+      d->streamLux[id]=0;
+      return "ack\n";
+
+    }
+
+  }else if (cmd[0] == 'd' && cmd[2] == 'd') {//last minute resume
+
+
+    int id = atoi(&cmd[4]);
+    //vai buscar a uma lista estes valores
+
+    if (id < NLUMS) {
+
+      ///STOP STREAM DUTY
+      d->streamDuty[id]=0;
+      return "ack\n";
+    }
+  }//DEBUG STUFF
+  else if (cmd[0] == 'z' && cmd[1] == 'd') {//last minute resume
+
+    std::cout << "VALOR ADICIONADODUTY" << '\n';
     d->lastDuty[0] = InsertDuty(d->lastDuty[0],1);
 
-    }
-    else if (cmd[0] == 'z' && cmd[1] == 'l') {//last minute resume
+  }
+  else if (cmd[0] == 'z' && cmd[1] == 'l') {//last minute resume
 
-std::cout << "VALOR ADICIONADOLUX" << '\n';
+    std::cout << "VALOR ADICIONADOLUX" << '\n';
     d->lastLux[0] = InsertLux(d->lastLux[0],1);
 
-    }
+  }
 
-    else if (cmd[0] == 'z' && cmd[1] == '2') {//last minute resume
+  else if (cmd[0] == 'z' && cmd[1] == '2') {//last minute resume
 
-std::cout << "VALOR NOVO PARA STREAMAR" << '\n';
+    std::cout << "VALOR NOVO PARA STREAMAR" << '\n';
     d->streamflagDuty[0] = 1;
 
-    }
+  }
 
 
-    //
-    return "";
+  //
+  return "";
 }
 
 class conn :  public enable_shared_from_this<conn> {
 private:
-   	tcp::socket sock_;
-   	std::string msg_;
-   	conn(io_service& io) :  sock_(io)  {}
+  tcp::socket sock_;
+  std::string msg_;
+  conn(io_service& io) :  sock_(io)  {}
 public:
-	static shared_ptr<conn> create(io_service& io) {
-         return shared_ptr<conn>(new conn(io));
-    }
-    tcp::socket& socket() {return sock_;}
+  static shared_ptr<conn> create(io_service& io) {
+    return shared_ptr<conn>(new conn(io));
+  }
+  tcp::socket& socket() {return sock_;}
 
 
-    void timerLoop(DSys*d)
-    {
+  void timerLoop(DSys*d)
+  {
 
     /*FOR DEBUGGING PURPOSES*/
     tim.expires_from_now(std::chrono::milliseconds(1000));
     tim.async_wait([this,d](boost::system::error_code ec) {
 
-std::cout << "LOOOOP" << '\n';
+    //  std::cout << "LOOOOP" << '\n';
 
       for (int i = 0; i < NLUMS; i++) {
 
-      //TAMBEM E PRECISO VERIFICAR SE STREAM ESTA ATIVO ATUALMENTE
+        //TAMBEM E PRECISO VERIFICAR SE STREAM ESTA ATIVO ATUALMENTE
 
-      //check if there is new lux data
-        if(d->streamflagLux[i]==1)
+        //check if there is new lux data
+        if(d->streamflagLux[i]==1 && d->streamLux[i]==1)
         {
 
-          boost::asio::async_write(sock_,boost::asio::buffer("*MANDA LUX*"),
+          //obtem tempo
+          std::chrono::duration<double,std::milli> elapsed(d->luxTime[i].back()-d->start_time);
+
+          std::string sendmsg="c l ";
+          sendmsg+=std::to_string(i);
+          sendmsg+=" ";
+          sendmsg+=std::to_string(d->lastLux[i].back());
+          sendmsg+=" ";
+          sendmsg+=std::to_string(elapsed.count());
+          sendmsg+="\n";
+
+          //gets time interval
+
+
+          boost::asio::async_write(sock_,boost::asio::buffer(sendmsg),
           [d](const boost::system::error_code &ec, std::size_t length){
-          std::cout << "MANDA LUX" << '\n';
+            std::cout << "MANDA LUX" << '\n';
           });
 
           d->streamflagLux[i]=0;
         }
 
         //check if there is new duty data
-        if(d->streamflagDuty[i]==1)
-          {
-        //faz  push do novo valor
-        boost::asio::async_write(sock_,boost::asio::buffer("*MANDA DUTY*\n"),
-        [d](const boost::system::error_code &ec, std::size_t length){
-        std::cout << "MANDA DUTY" << '\n';
-      });
+        if(d->streamflagDuty[i]==1 && d->streamDuty[i]==1)
+        {
 
-            d->streamflagDuty[i]=0;
-          }
+          //obtem tempo
+          std::chrono::duration<double,std::milli> elapsed(d->dutyTime[i].back()-d->start_time);
 
 
-/*
-int flagExternal[NLUMS]={ 0 };
-int flagLowLum[NLUMS]={ 0 };
-int flagRefLum[NLUMS]={ 0 };
-int flagOcu[NLUMS]={ 0 };*/
+          std::string sendmsg="c d ";
+          sendmsg+=std::to_string(i);
+          sendmsg+=" ";
+          sendmsg+=std::to_string(d->lastDuty[i].back());
+          sendmsg+=" ";
+          sendmsg+=std::to_string(elapsed.count());
+          sendmsg+="\n";
+          //faz  push do novo valor
+          boost::asio::async_write(sock_,boost::asio::buffer(sendmsg),
+          [d](const boost::system::error_code &ec, std::size_t length){
+            std::cout << "MANDA DUTY" << '\n';
+          });
 
-/*
-int ocu[NLUMS];
-float lowLum[NLUMS];
-float external[NLUMS];
-float refLum[NLUMS];*/
-std::string auxStr="";
-
-if(d->flagExternal[i]==1)
-  {
-    auxStr="O "+ std::to_string(i)+" "+ std::to_string(d->external[i])  +"\n";
-//faz  push do novo valor
-boost::asio::async_write(sock_,boost::asio::buffer(auxStr),
-[d](const boost::system::error_code &ec, std::size_t length){
-std::cout << "MANDA EXTERNAL" << '\n';
-});
-
-    d->flagExternal[i]=0;
-  }
-
-  if(d->flagLowLum[i]==1)
-    {
-auxStr="L "+ std::to_string(i)+" "+ std::to_string(d->lowLum[i])  +"\n";
-
-  //faz  push do novo valor
-  boost::asio::async_write(sock_,boost::asio::buffer(auxStr),
-  [d](const boost::system::error_code &ec, std::size_t length){
-  std::cout << "MANDA LOWLUM" << '\n';
-  });
-
-      d->flagLowLum[i]=0;
-    }
-
-    if(d->flagRefLum[i]==1)
-      {
+          d->streamflagDuty[i]=0;
+        }
 
 
-        auxStr="r "+ std::to_string(i)+" "+ std::to_string(d->refLum[i])  +"\n";
-    //faz  push do novo valor
-    boost::asio::async_write(sock_,boost::asio::buffer(auxStr),
-    [d](const boost::system::error_code &ec, std::size_t length){
-    std::cout << "MANDA REFLUM" << '\n';
-    });
+        /*
+        int flagExternal[NLUMS]={ 0 };
+        int flagLowLum[NLUMS]={ 0 };
+        int flagRefLum[NLUMS]={ 0 };
+        int flagOcu[NLUMS]={ 0 };*/
 
-        d->flagRefLum[i]=0;
-      }
+        /*
+        int ocu[NLUMS];
+        float lowLum[NLUMS];
+        float external[NLUMS];
+        float refLum[NLUMS];*/
 
+        /*
+        std::string auxStr="";
 
-          if(d->flagOcu[i]==1)
-            {
-
-
-                auxStr="o "+ std::to_string(i)+" "+ std::to_string(d->ocu[i])  +"\n";
+        if(d->flagExternal[i]==1)
+        {
+          auxStr="O "+ std::to_string(i)+" "+ std::to_string(d->external[i])  +"\n";
           //faz  push do novo valor
           boost::asio::async_write(sock_,boost::asio::buffer(auxStr),
           [d](const boost::system::error_code &ec, std::size_t length){
-          std::cout << "MANDA OCUPANCIA" << '\n';
+            std::cout << "MANDA EXTERNAL" << '\n';
           });
 
-              d->flagOcu[i]=0;
-            }
+          d->flagExternal[i]=0;
+        }
+
+        if(d->flagLowLum[i]==1)
+        {
+          auxStr="L "+ std::to_string(i)+" "+ std::to_string(d->lowLum[i])  +"\n";
+
+          //faz  push do novo valor
+          boost::asio::async_write(sock_,boost::asio::buffer(auxStr),
+          [d](const boost::system::error_code &ec, std::size_t length){
+            std::cout << "MANDA LOWLUM" << '\n';
+          });
+
+          d->flagLowLum[i]=0;
+        }
+
+        if(d->flagRefLum[i]==1)
+        {
+
+
+          auxStr="r "+ std::to_string(i)+" "+ std::to_string(d->refLum[i])  +"\n";
+          //faz  push do novo valor
+          boost::asio::async_write(sock_,boost::asio::buffer(auxStr),
+          [d](const boost::system::error_code &ec, std::size_t length){
+            std::cout << "MANDA REFLUM" << '\n';
+          });
+
+          d->flagRefLum[i]=0;
+        }
+std::cout << d->flagOcu[i] << '\n';
+
+        if(d->flagOcu[i]==1)
+        {
+
+
+          auxStr="o "+ std::to_string(i)+" "+ std::to_string(d->ocu[i])  +"\n";
+          //faz  push do novo valor
+          boost::asio::async_write(sock_,boost::asio::buffer(auxStr),
+          [d](const boost::system::error_code &ec, std::size_t length){
+            std::cout << "MANDA OCUPANCIA" << '\n';
+          });
+
+          d->flagOcu[i]=0;
+        }
+*/
+      }
+
+
+      timerLoop(d);
+      //	std::cout << "Sent! Now closing connection" << std::endl;
+    });
+
+  }
+
+
+  void loop(DSys *d)
+  {
+    auto self = shared_from_this();
+
+    sock_.async_read_some(boost::asio::buffer(data_, max_length),
+    [this,self,d](const boost::system::error_code &ec, std::size_t length){
+
+
+      //std::cout << "Message Read in Server: "<<data_ << "\n";
+      std::unique_lock<std::mutex> lk(mut);
+      while (d->iswriting==true)   cvstream.wait(lk);
+      //check if command is valid
+
+      d->isreading=true;
+      msg_ =CheckCommand(data_,d);
+
+      d->isreading=false;
+      cvi2c.notify_one();
+      lk.unlock();
+      //std::cout << "Message From CHECK CMD: "<<msg_ << "\n";
+
+
+      if(msg_.empty()){
+
+        boost::asio::async_write(sock_,boost::asio::buffer("Keep Alive\n"),
+        [this,self,d](const boost::system::error_code &ec, std::size_t length){
+
+          loop(d);
+
+        });
+      }
+      else
+      {
+        std::cout << msg_ << "Good Cmd\n";
+
+        boost::asio::async_write(sock_,boost::asio::buffer(msg_),
+        [this,self,d](const boost::system::error_code &ec, std::size_t length){
+
+          loop(d);
+
+
+        });
 
       }
 
 
-
-
-    if(d->streamLux[0])
-    {
-      std::cout << "LUUUUX" << '\n';
-    }
-    if(d->streamDuty[0])
-    {
-      std::cout << "DUUUUTY" << '\n';
-    }
-     timerLoop(d);
-    //	std::cout << "Sent! Now closing connection" << std::endl;
     });
-
-    }
-
-
-    void loop(DSys *d)
-     {
-       auto self = shared_from_this();
-
-       sock_.async_read_some(boost::asio::buffer(data_, max_length),
-       [this,self,d](const boost::system::error_code &ec, std::size_t length){
+  }
 
 
- std::cout << "Message Read in Server: "<<data_ << "\n";
+  void start(DSys* d) {
+    auto self = shared_from_this();
+    async_write(sock_, buffer("Hello World\n"),
+    [this, self,d](boost::system::error_code ec, std::size_t length) {
 
- //check if command is valid
-msg_ =CheckCommand(data_,d);
+      std::cout << "Server Started" << '\n';
+      loop(d);
 
-if(msg_.empty()){
-//std::cout << msg_ << "INVALID CMD \n";
-loop(d);
-}
-else
-{std::cout << msg_ << "Good Cmd\n";
-
- boost::asio::async_write(sock_,boost::asio::buffer(msg_),
-    [this,self,d](const boost::system::error_code &ec, std::size_t length){
-
-loop(d);
-
-
+      //	std::cout << "Sent! Now closing connection" << std::endl;
     });
-
-}
-
-
-  });
- }
+  }
 
 
-    void start(DSys* d) {
-    	auto self = shared_from_this();
-    	async_write(sock_, buffer("Hello World\n"),
-    	[this, self,d](boost::system::error_code ec, std::size_t length) {
-
-       std::cout << "Server Started" << '\n';
-loop(d);
-
-    	//	std::cout << "Sent! Now closing connection" << std::endl;
-    	});
-    }
-
-
-    enum { max_length = 1024 };
-    char data_[max_length];
+  enum { max_length = 1024 };
+  char data_[max_length];
 
 };
 
 class tcp_server {
 private:
-    tcp::acceptor acceptor_;
+  tcp::acceptor acceptor_;
 public:
-    tcp_server(io_service& io, DSys *d)
-     : acceptor_(io, tcp::endpoint(tcp::v4(), 10000))  {
+  tcp_server(io_service& io, DSys *d)
+  : acceptor_(io, tcp::endpoint(tcp::v4(), 10000))  {
 
 
-     	start_accept(d);
-     }
+    start_accept(d);
+  }
 private:
-   void start_accept(DSys *d) {
-       	shared_ptr<conn> new_conn =
-        	conn::create(acceptor_.get_io_service());
-       	acceptor_.async_accept(new_conn->socket(),
-       	[this, new_conn,d](boost::system::error_code ec) {
-       		new_conn->start(d);
-          new_conn->timerLoop(d);
-         	start_accept(d);
-		});
-   }
+  void start_accept(DSys *d) {
+    shared_ptr<conn> new_conn =
+    conn::create(acceptor_.get_io_service());
+    acceptor_.async_accept(new_conn->socket(),
+    [this, new_conn,d](boost::system::error_code ec) {
+      new_conn->start(d);
+      new_conn->timerLoop(d);
+      start_accept(d);
+    });
+  }
 };
 
 
@@ -1182,49 +1310,57 @@ int main(int argc, char* argv[])
 
   try {
 
-std::string serialPort="/dev/tty";
+    std::string serialPort="/dev/tty";
 
     if (argc < 3)
     {
       std::cerr << "Usage: server <SerialAddress> <flagserial>\n";
       return 1;
     }
-serialPort+=argv[1];
+    serialPort+=argv[1];
 
-std::cout << argv[2] << '\n';
-std::cout << serialPort << '\n';
-if(strcmp(argv[2], "-d") == 0)
- {
-   /*desativar serial port*/
-   sflag=0;
-   std::cout << "Serial Comunication Deactivated" << '\n';
- }
- else{
-   sflag=1;
- }
+    std::cout << argv[2] << '\n';
+    std::cout << serialPort << '\n';
+    if(strcmp(argv[2], "-d") == 0)
+    {
+      /*desativar serial port*/
+      sflag=0;
+      std::cout << "Serial Comunication Deactivated" << '\n';
+    }
+    else{
+      sflag=1;
+    }
 
-DSys dsystem(10,20);
+    DSys dsystem(10,20);
 
-if(sflag)
-{
-  sp.open(serialPort);    //connect to port
-  sp.set_option(serial_port_base::baud_rate(115200));
-}
+    if(sflag)
+    {
+      sp.open(serialPort);    //connect to port
+      sp.set_option(serial_port_base::baud_rate(115200));
+    }
 
 
     tcp_server server(io,&dsystem);
 
 
     std::thread io_thrd (ioStuff);     // spawn new thread that calls foo()
-    std::thread i2c_thrd (i2cStuff,&dsystem);  // spawn new thread that calls bar(0)
+    #ifdef __arm__
+
+        std::thread i2c_thrd (i2cStuff,&dsystem);  // spawn new thread that calls bar(0)
+        i2c_thrd.join();               // pauses until second finishes
+
+    #endif
+
+
+
 
     io_thrd.join();                // pauses until first finishes
-    i2c_thrd.join();               // pauses until second finishes
 
 
 
-} catch(std::exception &e) {std::cout << e.what();}
+
+  } catch(std::exception &e) {std::cout << e.what();}
 
 
-return 0;
+  return 0;
 }
