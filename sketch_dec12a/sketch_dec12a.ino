@@ -11,6 +11,7 @@
 #define ZERO 200
 #define max_iter 50
 
+int novo = 0;
 long int lastMeasure = 0;
 int iter_cons = 0;
 float  pwm;
@@ -70,7 +71,7 @@ float q1 = 1.0, q2 = 1.0;
 float Q[][2] = {{q1, 0}, {0, q2}};
 
 //Consensus variables
-float rho = 0.15;
+float rho = 0.23;
 //node 1
 float d1[] = {0, 0};
 float d1_av[] = {0, 0};
@@ -227,7 +228,10 @@ void loop()
       Serial.println(iter_cons);
 
 
-      if (      (((abs(d_copy[0] -   (inData[1] + inData[2] / 100))   < 0.1) && (abs(d_copy[1] - (inData[3] + inData[4] / 100)) < 0.1 ) && (d_copy[0] != 0)) && iter_cons > 6) || iter_cons == max_iter)
+if(((d1_av[0] == ((d1[0]+ (inData[1] + inData[2] / 100)) / 2)  && (d1_av[1] == (d1[1] + (inData[3] + inData[4] / 100) ) / 2)&&(d_copy[0] != 0)) && (iter_cons > 6)) || iter_cons == max_iter)
+
+
+     // if (      (((abs(d_copy[0] -   (inData[1] + inData[2] / 100))   == 0) && (abs(d_copy[1] - (inData[3] + inData[4] / 100)) == 0 ) && (d_copy[0] != 0)) && (iter_cons > 6)) || iter_cons == max_iter)
         //if (int(d_copy[0]) - int(inData[1]) == 0  && int(d_copy[1]) - int(inData[3] == 0) && d_copy[0] != 0)
       {
 
@@ -235,7 +239,7 @@ void loop()
         Serial.println(d1[1]);
         Serial.println("end consensus");
         iter_cons = 0;
-
+        novo = 1;
         transmit(end_consensus, address_aux, 2);
         flag_cons = 1;
         flag = 0;
@@ -289,22 +293,14 @@ void loop()
             serverMSG[4] = (L1 - int(L1)) * 100;
             serverMSG[5] = 0;
             transmit(serverMSG, address_aux, 6);
-            delay(100);
+            delay(30);
 
             serverMSG[1] = 'o';
             serverMSG[3] = estado;
             serverMSG[4] = 0;
             transmit(serverMSG, address_aux, 5);
-            delay(100);
-            //estado = 0;
-            d1[0] = 0;
-            d1[1] = 0;
-            y1[0] = 0;
-            y1[1] = 0;
-            d1_av[0] = 0;
-            d1_av[1] = 0;
-            d_copy[0] = 0;
-            d_copy[1] = 0;
+            delay(30);
+            //estado = 0
             iteracao();
             Serial.println("b4");
             Serial.println(estado);
@@ -482,6 +478,10 @@ void receiveEvent(int howMany)
       index++; // Increment where to write next
       inData1[index] = '\0'; // Null terminate the string
     }
+    else if (aux == 'q')
+    {
+      coupled = !coupled;
+    }
     else
     {
       inData[index] = Wire.read();
@@ -526,6 +526,7 @@ void receiveEvent(int howMany)
 
   } else if (aux == 'z')
   {
+    novo = 1;
     flag = 0;
     flag_cons = 1;
     iter_cons = 0;
@@ -637,9 +638,12 @@ void calibrar1()
   /*
     lux_max = (300 *(k11+k12))/4;
     lux_min = (100 *(k11+k12))/4;*/
+/*
+  lux_max = (200 * (k11 + k12)) / 3;
+  lux_min = (100 * (k11 + k12)) / 3;*/
 
-  lux_max = (360 * (k11 + k12)) / 4;
-  lux_min = (70 * (k11 + k12)) / 4;
+  lux_max = (200 * k11) / 3+ o1;
+  lux_min = (100 * k11) / 3 + o1;
   Serial.println("max and min values");
   Serial.println(lux_max);
   Serial.println(lux_min);
@@ -655,21 +659,21 @@ void calibrar1()
   serverMSG[4] = (L1 - int(L1)) * 100;
   serverMSG[5] = 0;
   transmit(serverMSG, address_aux, 6);
-  delay(100);
+  delay(30);
 
   serverMSG[1] = 'L';
   serverMSG[3] = int(lux_min);
   serverMSG[4] = (lux_min - int(lux_min)) * 100;
   serverMSG[5] = 0;
   transmit(serverMSG, address_aux, 6);
-  delay(100);
+  delay(30);
 
   serverMSG[1] = 'O';
   serverMSG[3] = int(o1);
   serverMSG[4] = int((o1 - int(o1)) * 100);
   serverMSG[5] = 0;
   transmit(serverMSG, address_aux, 6);
-  delay(100);
+  delay(30);
 
   serverMSG[1] = 'o';
   if (estado == 1)
@@ -695,6 +699,18 @@ void calibrar1()
 
 void iteracao()
 {
+  if(novo)
+  {
+    d1[0] = 0;
+            d1[1] = 0;
+            y1[0] = 0;
+            y1[1] = 0;
+            d1_av[0] = 0;
+            d1_av[1] = 0;
+            d_copy[0] = 0;
+            d_copy[1] = 0;
+            novo = 0;
+  }
 
   float z11, z12;
   float mini = 0;
@@ -1145,11 +1161,14 @@ void SerialInputs()
         }
       case 'r':
         {
+          coupled = 1;
+          transmit('q',address_aux,2);
           delay(1000);
           Serial.println("we are goint to reset the system pls w8 a few seconds whiel recalibration occcurs");
           Wire.beginTransmission(address_aux); // transmit to device
           Wire.write("O");
           Wire.endTransmission();
+          
           // verificar
           flag = 2;
           on = 0;
@@ -1158,6 +1177,7 @@ void SerialInputs()
       case 'q':
         {
           coupled = !coupled;
+          transmit('q',address_aux,2);
           break;
         }
 
@@ -1276,9 +1296,14 @@ void controlo(float reference)
 
 
   if (coupled)
-    pwm = (declive * u) + d1[0] * 255 / 100;
+  {
+     pwm = (declive * u) + d1[0] * 255 / 100;
+  }
   else
-    pwm = declive * (u + reference);
+    {
+      pwm = declive * (u + reference);
+      Serial.println(pwm);
+    }
 
   if (pwm < 0)
     pwm = 0;

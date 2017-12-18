@@ -5,7 +5,7 @@ K = [k11, k12 ; k21 , k22];
 L = [L1;L2]; o = [o1;o2];
 
 %The cost function
-c1 = 1; c2 = 1; q1 = 0.0; q2 = 0.0;
+c1 = 1; c2 = 1; q1 = 1.0; q2 = 1.0;
 c = [c1 c2]; Q = [q1 0; 0 q2];
 
 % SOLVE WITH CONSENSUS
