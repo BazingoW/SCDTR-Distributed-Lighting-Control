@@ -26,12 +26,13 @@
 //variaveis de HIGH E LOW
 float minluxs = 20, maxluxs = 50;
 int centralized = 1;
+int type = 2;
 
 //valor de lux definido pelo utilizador
 float desejado = 0;
 
 //toggles feedforward ON or OFF
-bool FFD = false; 
+bool FFD = true; 
 
 //variável que entra na funcão de controlo
 float ref = minluxs;
@@ -101,19 +102,151 @@ void setup() {
 
    //define o primeiro valor da lookup table a zero 
    lookUp [0] = 0;
+   analogWrite(led, 0);
+   delay(100);
+   analogWrite(led, 255);
+   
 }
 
 
 // the loop function runs over and over again forever
 void loop() {
 
+   //analogWrite(led, 255);
+   String input;
 
+  if(millis() > 3000*type && 0)
+  {
+    type = type +1;
+    switch(type)
+    
+{
+    case 3:
+    {
+      input = "ocu 0";
+      break;
+    }
+    case 4:
+    {
+      input = "ocu 1";
+      break;
+    }
+    case 5:
+    {
+      input = "ocu 0";
+      break;
+    }
+}
+    
+    //verrifica se utilizador quer mudar utilização da secretaria
+    if (input.substring(0, 3) == "ocu")
+    {
+      //se ocu 0
+      if (input[4] == '0')
+      {
+        //Define como estando livre
+        estado = LIVRE;
+        ref = minluxs;
+        //Serial.println("changed to free");
+      }
+       //se ocu 1
+      else if (input[4] == '1')
+      {
+        //Define como estando ocupada
+        estado = OCUPADO;
+        ref = maxluxs;
+
+       // Serial.println("changed to occupied");
+      }
+      else
+       // Serial.println("Please revise the intruction to send commands");
+       1+1;
+    }
+    //define novo minlux
+    else if (input.substring(0, 3) == "min")
+    {
+      minluxs = input.substring(4, 19).toFloat();
+     // Serial.print("changed min to");
+    //  Serial.println(minluxs);
+
+      //muda a referencia para novo valor de minluxs
+      if (estado == LIVRE)
+        ref = minluxs;
+    }
+    //define novo maxlux
+    else if (input.substring(0, 3) == "max")
+    {
+
+      maxluxs = input.substring(4, 19).toFloat();
+    //  Serial.print("changed max to");
+     // Serial.println(maxluxs);
+
+       //muda a referencia para novo valor de minluxs
+      if (estado == OCUPADO)
+        ref = maxluxs;
+    }
+    //se utilizador quer que haja um valor de lux especifico
+    else if (input.substring(0, 3) == "lux")
+    {
+      desejado = input.substring(4, 19).toFloat();
+
+      //define esse valor como a referencia
+      ref = desejado;
+
+      //poe a secretaria para estar nem livre, nem ocupada
+      estado = FREESTYLE;
+      
+     // Serial.print("mode set to freestyle ");
+      //Serial.println(ref);
+    }
+    //se utilizador quer ativar ou desativar o feedforward
+    else if (input.substring(0, 3) == "ffd")
+    {    
+
+      if (input[4] == '0')
+      {
+        Serial.println("feedfoward OFF");
+        FFD = false;
+      }
+      else if (input[4] == '1')
+      {
+        Serial.println("feedfoward ON");
+        FFD = true;
+      }
+      else
+       // Serial.println("Please revise the intruction to send commands");
+       1+1;
+    }
+    else
+     // Serial.println("Please revise the intruction to send commands");
+1+1;
+    
+  }
+
+ 
   //define start time
   unsigned long startTime = micros();
 
   //faz o controlo do sistema
   controlo(ref);
+  
+// float pila = calc_luxs( analogRead(analogPin));
+ //shift_left(pila);
+  //Serial.println(micros());
 
+  //faz a media dos ultimos lux
+//  y = average();
+
+/*
+
+  
+  Serial.print(y);
+  Serial.print(" ; ");
+  Serial.print(pila);
+  Serial.print(" ; ");
+  
+  Serial.println(millis());*/
+  
   //define tempo qd controlo acaba
   unsigned long endTime = micros();
 
@@ -359,10 +492,15 @@ void controlo(float reference)
   float  pwm;
   
   //lê pino e obtem luxs  
+  //Serial.println("new");
   shift_left(calc_luxs( analogRead(analogPin)));
+  //Serial.println(micros());
 
   //faz a media dos ultimos lux
   y = average();
+
+  //sem average
+  y = calc_luxs( analogRead(analogPin));
 
   //calcula erro em relacao a referencia ilum_min
   e = reference - y;
@@ -429,6 +567,7 @@ if(pwm > 255)
     pwm = 255;
 
 analogWrite(led,pwm);
+//Serial.println(micros());
 
 
   //faz set das variaveis para o proximo loop
@@ -438,16 +577,24 @@ analogWrite(led,pwm);
 
   
  //prints pedidos pelo prof
-  Serial.print(reference);
+ // Serial.print(reference);
+ // Serial.print(" ; ");
+ 
+  Serial.print(y);
   Serial.print(" ; ");
-  Serial.print(average());
+  Serial.print(ref);
   Serial.print(" ; ");
+  Serial.print(round(pwm));
+  Serial.print(" ; ");
+  
+  Serial.println(millis());
+ /* Serial.print(" ; ");
   if (FFD == true)
    // Serial.print(((search(reference+u))/255)* 100);
     Serial.print(((declive*(reference+u))/255)* 100);
   else
     Serial.print((pwm/255)* 100);
   Serial.println(" %");
-  Serial.println(u);
+  Serial.println(u);*/
 }
 

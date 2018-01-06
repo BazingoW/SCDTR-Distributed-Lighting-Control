@@ -65,7 +65,7 @@ float L[][1] = {{L1}, {L2}};
 float o[][1] = {{o1}, {o2}};
 
 //Cost function
-float c1 = 1, c2 = 1;
+float c1 = 5, c2 = 1;
 float c[] = {c1, c2};
 float q1 = 1.0, q2 = 1.0;
 float Q[][2] = {{q1, 0}, {0, q2}};
@@ -103,6 +103,8 @@ void setup()
   {
     address = 2;
     address_aux = 1;
+    c1 = c2;
+    q1 = q2; 
   }
   else
   {

@@ -1,0 +1,36 @@
+figure
+subplot(2,1,1)
+hold on
+plot(nome(:,4),nome(:,1)) % real
+plot(nome(:,4),nome(:,2)) % ref
+
+plotyy(nome(:,4),nome(:,3)) % pwm
+
+subplot(2,1,2)
+hold on
+plot(ffd_off(:,4),ffd_off(:,1)) % real
+plot(ffd_off(:,4),ffd_off(:,2)) % ref
+%yyaxis right
+plotyy(ffd_off(:,4),ffd_off(:,3)) % pwm
+
+figure
+fed = 75;
+
+ref = 600;
+for i = 1:4
+
+subplot(2,4,i)
+hold on
+space = ref-20:ref+3*fed;
+plot(nome(space,4),nome(ref-20:ref+fed*3,1));
+plot(nome(space,4),nome(ref-20:ref+fed*3,2));
+
+
+subplot(2,4,4+i)
+hold on
+plot(ffd_off(space,4),ffd_off(ref-20:ref+fed*3,1));
+plot(ffd_off(space,4),ffd_off(ref-20:ref+fed*3,2));
+
+ref = ref + 300;
+
+end
