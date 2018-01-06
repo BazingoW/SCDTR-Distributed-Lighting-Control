@@ -525,6 +525,8 @@ usat=u;
     
     usat = lookUp[0];
   }*/
+  
+  
     if (u > 255/declive)
   {
     usat = 255/declive;
@@ -558,7 +560,7 @@ usat=u;
   if (FFD == true)
     //analogWrite(led, search(reference + u));
 { 
-  pwm = declive * (reference + usat);
+  pwm = declive * (reference + u);
 }  
 
 if(pwm <0)

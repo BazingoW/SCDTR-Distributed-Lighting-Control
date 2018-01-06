@@ -7,8 +7,9 @@ xlabel('time_{[ms]}');
 ylabel('LUX')
 yyaxis right
 ylabel('pwm');
-plot(nome(:,4),nome(:,3)-85) % pwm
+plot(nome(:,4),nome(:,3)) % pwm
 
+%%
 subplot(2,1,2)
 hold on
 plot(ffd_off(:,4),ffd_off(:,1)) % real
@@ -59,15 +60,20 @@ yyaxis right
 ylabel('pwm');
 plot(wind_up(:,4),wind_up(:,3)-85) % pwm
 %%
+figure
+subplot(2,1,1)
+hold on
+plot(wind_up(:,4),wind_up(:,1)) % real
+plot(wind_up(:,4),wind_up(:,2)) % ref
+xlabel('time_{[ms]}');
+ylabel('LUX')
+
 subplot(2,1,2)
 hold on
 plot(wind_off(:,4),wind_off(:,1)) % real
 plot(wind_off(:,4),wind_off(:,2)) % ref
 xlabel('time_{[ms]}');
 ylabel('LUX')
-yyaxis right
-ylabel('pwm')
-plot(ffd_off(:,4),ffd_off(:,3)) % pwm
 
 
 
